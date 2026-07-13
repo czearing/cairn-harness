@@ -21,7 +21,10 @@ export default defineConfig({
     command: "node tests/setup-fixture.mjs && npm run start -- --hostname 127.0.0.1 --port 3100",
     url: "http://127.0.0.1:3100",
     reuseExistingServer: false,
-    env: { HARNESS_PROJECTS: fixture },
+    env: {
+      HARNESS_PROJECTS: fixture,
+      HARNESS_PROJECT_ROOT: path.join(process.cwd(), ".e2e", "projects"),
+    },
     timeout: 120000,
   },
 });

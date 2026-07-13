@@ -1,9 +1,8 @@
-.card { min-height: 150px; display: flex; flex-direction: column; justify-content: space-between; gap: 20px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-1); transition: border-color 140ms ease, transform 140ms ease; }
-.card:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+.card { width: 100%; min-height: 150px; display: flex; flex-direction: column; justify-content: space-between; gap: 20px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-1); color: var(--text); text-align: left; cursor: pointer; transition: border-color 140ms ease, transform 140ms ease, background 140ms ease; }
+.card:hover { border-color: var(--border-strong); background: var(--surface-hover); transform: translateY(-1px); }
 .top, .footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); font: 600 10px var(--font-geist-mono); }
-.card h3 { margin: 0 0 4px; font-size: 14px; font-weight: 590; letter-spacing: -0.01em; }
-.card p, .footer span { margin: 0; color: var(--text-muted); font-size: 12px; }
-.footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.footer button { display: grid; place-items: center; width: 28px; height: 28px; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
-.footer button:hover { color: var(--text); border-color: var(--border-strong); }
+.identity h3 { margin: 0 0 4px; font-size: 14px; font-weight: 590; letter-spacing: -0.01em; }
+.identity p, .footer span { margin: 0; color: var(--text-muted); font-size: 12px; }
+.footer > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.open { flex: 0 0 auto; color: var(--text-subtle) !important; font-size: 10px !important; }

@@ -1,4 +1,4 @@
-import { sendMessage } from "@/server/projects";
+import { sendMessage } from "@/server/mutations";
 
 export const runtime = "nodejs";
 

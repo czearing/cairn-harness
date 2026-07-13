@@ -1,8 +1,9 @@
-.row { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.row { width: 100%; display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: start; padding: 10px 0; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
 .row:last-child { border-bottom: 0; }
+.row:hover .copy span { color: var(--text); }
 .icon { display: grid; place-items: center; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
 .failed { background: #3d2021; color: var(--danger); }
-.row div { min-width: 0; }
-.row strong { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 600; }
-.row p { margin: 0; color: var(--text-muted); font-size: 11px; line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.copy { min-width: 0; }
+.copy strong { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 600; }
+.copy span { display: block; color: var(--text-muted); font-size: 11px; line-height: 1.45; white-space: normal; }
 .row time { color: var(--text-subtle); font: 10px var(--font-geist-mono); white-space: nowrap; }

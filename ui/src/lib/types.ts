@@ -13,6 +13,7 @@ export interface QueueItem {
   title: string;
   meta: string;
   status: string;
+  content?: string;
 }
 
 export interface Activity {
@@ -21,6 +22,17 @@ export interface Activity {
   summary: string;
   status: string;
   completedAt: string;
+  chatId: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  sender: string;
+  recipient: string;
+  body: string;
+  status: string;
+  timestamp: string;
+  direction: "incoming" | "outgoing";
 }
 
 export interface Project {
@@ -31,5 +43,7 @@ export interface Project {
   workItems: QueueItem[];
   todos: QueueItem[];
   activity: Activity[];
+  conversations: Record<string, ChatMessage[]>;
+  workDir?: string;
   releases: number;
 }

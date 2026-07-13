@@ -1,6 +1,7 @@
-.row { display: grid; grid-template-columns: 16px 1fr auto; gap: 10px; align-items: center; min-height: 48px; padding: 8px 2px; border-bottom: 1px solid var(--border); color: var(--text-muted); }
+.row { width: 100%; display: grid; grid-template-columns: 16px 1fr auto; gap: 10px; align-items: center; min-height: 48px; padding: 8px 2px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text-muted); text-align: left; cursor: pointer; }
 .row:last-child { border-bottom: 0; }
-.row div { min-width: 0; display: grid; gap: 3px; }
-.row strong { color: var(--text); font-size: 12px; font-weight: 540; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row span { font-size: 11px; }
-.status { padding: 3px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-subtle); text-transform: capitalize; }
+.row:hover { color: var(--text); }
+.copy { min-width: 0; display: grid; gap: 3px; }
+.copy strong { color: var(--text); font-size: 12px; font-weight: 540; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copy span { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status { padding: 3px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-subtle); font-size: 11px; text-transform: capitalize; }

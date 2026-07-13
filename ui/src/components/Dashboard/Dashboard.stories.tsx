@@ -13,7 +13,12 @@ const projects = [{
   ],
   workItems: [{ id: "1", title: "song-1.md", meta: "work-items/in-progress/song-1.md", status: "in progress" }],
   todos: [{ id: "2", title: "lyrics.todo", meta: "todos/lyrics.todo", status: "delegated" }],
-  activity: [{ id: 1, agent: "idea-manager", summary: "Documented EP direction.", status: "completed", completedAt: new Date().toISOString() }],
+  activity: [{ id: 1, agent: "idea-manager", summary: "Documented EP direction.", status: "completed", completedAt: new Date().toISOString(), chatId: "turn:1" }],
+  conversations: {
+    "idea-manager": [{ id: "turn:1", sender: "idea-manager", recipient: "team", body: "Documented EP direction.", status: "completed", timestamp: new Date().toISOString(), direction: "outgoing" as const }],
+    lyricist: [],
+    composer: [],
+  },
 }];
 
 const meta = { component: Dashboard, title: "Pages/Dashboard", parameters: { layout: "fullscreen" } } satisfies Meta<typeof Dashboard>;

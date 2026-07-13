@@ -1,23 +1,22 @@
-import { MessageSquare } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { StatusPill } from "../StatusPill/StatusPill";
 import styles from "./AgentCard.module.css";
 
-export function AgentCard({ agent, onMessage }: { agent: Agent; onMessage?: () => void }) {
+export function AgentCard({ agent, onClick }: { agent: Agent; onClick?: () => void }) {
   return (
-    <article className={styles.card}>
+    <button className={styles.card} onClick={onClick} aria-label={`Open conversation with ${agent.id}`}>
       <div className={styles.top}>
         <span className={styles.avatar}>{agent.id.slice(0, 2).toUpperCase()}</span>
         <StatusPill status={agent.status} />
       </div>
-      <div>
+      <div className={styles.identity}>
         <h3>{agent.id}</h3>
         <p>{agent.role}</p>
       </div>
       <div className={styles.footer}>
         <span>{agent.topic || "No active work"}</span>
-        <button aria-label={`Message ${agent.id}`} onClick={onMessage}><MessageSquare size={15} /></button>
+        <span className={styles.open}>Open chat</span>
       </div>
-    </article>
+    </button>
   );
 }
