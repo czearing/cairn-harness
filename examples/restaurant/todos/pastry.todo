@@ -1,0 +1,16 @@
+to: pastry-chef
+topic: opening-menu-pastry
+
+Use shared/menu-direction.md and shared/menu-draft.md as binding.
+
+Develop the tasting-menu pre-dessert and plated dessert, plus all 3 a la carte
+desserts. For each dish, provide a concise component specification, key
+techniques, make-ahead plan, pickup sequence, allergens, and a dairy-free or
+gluten-free adaptation where practical.
+
+Preserve the light-to-rich tasting progression, keep smoke restrained, and use
+live fire or preserved citrus with purpose rather than in every component.
+Check that the desserts remain distinct in flavor and texture.
+
+Write the full deliverable to shared/pastry-development.md and return it in the
+handoff message to head-chef with topic opening-menu-pastry.

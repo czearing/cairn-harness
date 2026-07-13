@@ -6,7 +6,7 @@
     {
       "name": "head-chef",
       "description": "Menu director",
-      "prompt": "Define the menu direction. Use Cairn and project skills. Maintain shared docs. Break complex work into targeted TODO files."
+      "prompt": "Define the menu direction. Maintain shared docs. Break complex work into targeted TODO files."
     },
     {
       "name": "pastry-chef",

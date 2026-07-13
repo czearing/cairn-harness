@@ -17,7 +17,7 @@ async fn parses_protocol_from_an_isolated_shell_process() {
     std::fs::write(
         &script,
         "param([string]$LogPath)\n\
-         @($env:CAIRN_SKILL_WORKER) + $args | Set-Content -Path $LogPath\n\
+         $args | Set-Content -Path $LogPath\n\
          Write-Output 'CAIRN_ENVELOPE_BEGIN'\n\
          Write-Output '{\"summary\":\"shell ok\",\"messages\":[],\"complete\":true}'\n\
          Write-Output 'CAIRN_ENVELOPE_END'\n",
@@ -47,7 +47,6 @@ async fn parses_protocol_from_an_isolated_shell_process() {
     assert_eq!(output.summary, "shell ok");
     assert!(output.complete);
     let arguments = std::fs::read_to_string(arguments).unwrap();
-    assert!(arguments.lines().next().is_some_and(|line| line == "1"));
     assert!(!arguments.contains("--autopilot"));
     assert!(arguments.contains("--session-id"));
     assert!(!arguments.contains("--max-ai-credits"));

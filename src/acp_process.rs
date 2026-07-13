@@ -8,7 +8,7 @@ use agent_client_protocol::schema::{
     },
 };
 use agent_client_protocol::{AcpAgent, Agent, Client, ConnectionTo};
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{config::CopilotConfig, models::WorkerSpec, persistent_runner::Job, shell_command};
@@ -72,8 +72,9 @@ fn agent(config: &CopilotConfig, root: &std::path::Path, worker: &WorkerSpec) ->
         .join("copilot-home")
         .join(&worker.id);
     std::fs::create_dir_all(&copilot_home)?;
+    sync_profile(&copilot_home)?;
     let mut args = vec![
-        "CAIRN_SKILL_WORKER=1".into(),
+        "AGENT_HARNESS=1".into(),
         format!("COPILOT_HOME={}", copilot_home.display()),
     ];
     args.extend(shell_command::argv(&config.executable));
@@ -81,28 +82,54 @@ fn agent(config: &CopilotConfig, root: &std::path::Path, worker: &WorkerSpec) ->
     args.extend([
         "--acp".into(),
         "--allow-all-tools".into(),
-        "--disable-builtin-mcps".into(),
         "--no-color".into(),
     ]);
-    if let Some(path) = cairn_config(config) {
+    if let Some(path) = &config.additional_mcp_config {
+        let path = path.to_string_lossy().replace('\\', "/");
         args.extend(["--additional-mcp-config".into(), format!("@{path}")]);
     }
     if let Some(model) = &config.model {
         args.extend(["--model".into(), model.clone()]);
     }
     Ok(AcpAgent::from_args(args)?.with_debug(|line, direction| {
-        if std::env::var_os("CAIRN_HARNESS_ACP_DEBUG").is_some() {
+        if std::env::var_os("HARNESS_ACP_DEBUG").is_some() {
             eprintln!("{direction:?}: {line}");
         }
     }))
 }
 
-fn cairn_config(config: &CopilotConfig) -> Option<String> {
-    if let Some(path) = &config.additional_mcp_config {
-        return Some(path.to_string_lossy().replace('\\', "/"));
+fn sync_profile(destination: &std::path::Path) -> Result<()> {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .context("home directory is unavailable")?;
+    let source = PathBuf::from(home).join(".copilot");
+    for name in [
+        "mcp-config.json",
+        "config.json",
+        "settings.json",
+        "permissions-config.json",
+    ] {
+        let from = source.join(name);
+        if from.is_file() {
+            std::fs::copy(from, destination.join(name))?;
+        }
     }
-    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
-    let path = PathBuf::from(home).join(".copilot").join("mcp-config.json");
-    path.is_file()
-        .then(|| path.to_string_lossy().replace('\\', "/"))
+    copy_dir(&source.join("hooks"), &destination.join("hooks"))
+}
+
+fn copy_dir(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
+    if !source.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(destination)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let target = destination.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
 }

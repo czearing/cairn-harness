@@ -37,7 +37,6 @@ impl CopilotRunner {
     async fn execute(&self, request: RunRequest) -> Result<AgentOutput> {
         let mut command = shell_command::new(&self.config.executable);
         command.args(&self.config.arguments);
-        command.env("CAIRN_SKILL_WORKER", "1");
         command
             .arg("-p")
             .arg(&request.prompt)

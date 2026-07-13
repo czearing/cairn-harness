@@ -2,12 +2,12 @@
 
 ## Turn 1: head-chef 
 
-- Session: `7fadcb6d-d55e-41a7-b839-e5d7b7494733`
+- Session: `80669bd4-deee-4774-9bb0-98b31ed07b25`
 - From: `todo-folder`
 - Topic: `todos/menu.todo`
 - Status: `completed`
-- Started: 2026-07-13T20:57:37.509772500+00:00
-- Completed: 2026-07-13T20:58:33.868021600+00:00
+- Started: 2026-07-13T21:46:30.676444500+00:00
+- Completed: 2026-07-13T21:47:29.650188400+00:00
 
 ### Input
 
@@ -18,36 +18,44 @@ shared constraints, and break the work into the right specialist tasks.
 
 ### Summary
 
-Established menu direction for Ember & Olive, a Mediterranean coastal restaurant built around wood-fire and hearth cooking with olive oil as the primary fat. Documented full concept, pantry, constraints, work split, and acceptance criteria in docs/menu-direction.md. Split work into two targeted TODO files: savory.todo for sauce-chef (11 a la carte dishes plus tasting courses 1-6) and dessert.todo for pastry-chef (4 a la carte desserts plus tasting course 7). recipe-tester will evaluate once both chefs deliver.
+Created an 8-course tasting menu and 15-dish a la carte menu centered on live-fire coastal California cooking and preserved citrus. Documented constraints and created three specialist TODOs.
 
 ### Tools
 
+- cairn-skill_search
+- cairn-skill_create
 - Using skill: menu-planning
-- Viewing ...\calebzearing\cairn-harness\examples\restaurant
-- Viewing ...zearing\cairn-harness\examples\restaurant\todos
-- Viewing ...\cairn-harness\examples\restaurant\project.json
-- Viewing ...aring\cairn-harness\examples\restaurant\.agents
+- Finding files matching **/*
 - Viewing ...irn-harness\examples\restaurant\todos\menu.todo
-- Create shared docs directory
-- Creating ...ness\examples\restaurant\docs\menu-direction.md
-- Creating ...n-harness\examples\restaurant\todos\savory.todo
-- Creating ...-harness\examples\restaurant\todos\dessert.todo
+- Viewing ...ss\examples\restaurant\shared\menu-direction.md
+- Viewing ...arness\examples\restaurant\shared\menu-draft.md
+- Viewing ...\cairn-harness\examples\restaurant\project.json
+- apply_patch
+- Viewing ...n-harness\examples\restaurant\todos\pastry.todo
+- Viewing ...rn-harness\examples\restaurant\todos\sauce.todo
+- Viewing ...-harness\examples\restaurant\todos\testing.todo
+- Check restaurant project changes
+- cairn-skill_review
 
 ### Deliverable
 
-docs/menu-direction.md created with restaurant concept (Ember & Olive), pantry, constraints (wood-fire requirement, olive oil primacy, protein limits, 7-course tasting arc, dish documentation requirements), work split, and acceptance criteria. todos/savory.todo and todos/dessert.todo created with to/topic headers for sauce-chef and pastry-chef.
+Shared direction: shared/menu-direction.md
+Complete menu: shared/menu-draft.md
+Specialty: coastal ingredients cooked over embers, balanced with house-preserved citrus.
+A la carte mix: 3 snacks, 3 vegetables, 3 seafood dishes, 3 meat dishes, and 3 desserts.
 
 ### Handoffs
 
-- To `sauce-chef` / `savory-menu`: Read docs/menu-direction.md then complete todos/savory.todo: 11 savory a la carte dishes and tasting courses 1-6 for Ember & Olive. Respect wood-fire, olive oil, and protein-repeat constraints. Return recipes in the standard envelope.
-- To `pastry-chef` / `dessert-menu`: Read docs/menu-direction.md then complete todos/dessert.todo: 4 dessert a la carte dishes and tasting course 7 for Ember & Olive. Butter allowed here. Return recipes in the standard envelope.
+- To `pastry-chef` / `opening-menu-pastry`: Complete todos/pastry.todo. Develop both tasting desserts and all three a la carte desserts, then attach the full deliverable.
+- To `sauce-chef` / `opening-menu-sauces`: Complete todos/sauce.todo. Develop savory sauces, broths, condiments, and acidic finishes, then attach the full deliverable.
+- To `recipe-tester` / `opening-menu-validation`: Complete todos/testing.todo. Audit the menu now and again after pastry and sauce development are available.
 
 <details><summary>Full prompt</summary>
 
 ```text
 Project: restaurant-menu
 Agent: head-chef
-Role: Menu director. Define the menu direction. Use Cairn and project skills. Maintain shared docs. Break complex work into targeted TODO files.
+Role: Menu director. Define the menu direction. Maintain shared docs. Break complex work into targeted TODO files.
 Activity:
 head-chef: working (todos/menu.todo)
 pastry-chef: idle (idle)

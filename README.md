@@ -34,9 +34,8 @@ cargo run -- --config project.json status
 cargo run -- --config project.json transcript --full
 ```
 
-Copilot CLI must already be authenticated with `copilot login`. Cairn remains
-available through the user's normal Copilot MCP configuration. Set
-`copilot.additional_mcp_config` when a project needs a dedicated MCP file.
+Copilot CLI must already be authenticated with `copilot login`. Each agent
+inherits the user's normal Copilot hooks and MCP configuration.
 
 ## Protocol
 

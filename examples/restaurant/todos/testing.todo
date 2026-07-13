@@ -1,0 +1,15 @@
+to: recipe-tester
+topic: opening-menu-validation
+
+Use shared/menu-direction.md and shared/menu-draft.md as binding. Review the
+menu now, then repeat the review after shared/pastry-development.md and
+shared/sauce-development.md are available.
+
+Audit the exact dish and category counts, tasting progression, repeated primary
+ingredients, vegetarian count, dairy-free adaptability, allergen coverage,
+contrast, citrus adjacency, smoke fatigue, cross-utilization, pickup complexity,
+holding risks, and likely bottlenecks. Recommend specific corrections, not
+general observations.
+
+Write the full deliverable to shared/menu-validation.md and return it in the
+handoff message to head-chef with topic opening-menu-validation.
