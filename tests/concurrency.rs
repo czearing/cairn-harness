@@ -41,6 +41,7 @@ impl AgentRunner for DelayRunner {
                 summary: "done".into(),
                 deliverable: None,
                 messages: Vec::new(),
+                tools: Vec::new(),
                 complete: true,
             })
         })

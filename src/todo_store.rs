@@ -9,7 +9,8 @@ impl Store {
         &self,
         path: &str,
         content_hash: &str,
-        leader: &str,
+        recipient: &str,
+        topic: &str,
         body: &str,
     ) -> Result<bool> {
         let existing: Option<(String,)> =
@@ -28,8 +29,8 @@ impl Store {
              VALUES(?, 'todo-folder', ?, ?, ?, 'pending', ?)",
         )
         .bind(&message_id)
-        .bind(leader)
-        .bind(path)
+        .bind(recipient)
+        .bind(topic)
         .bind(body)
         .bind(&now)
         .execute(&mut *transaction)

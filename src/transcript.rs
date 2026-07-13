@@ -20,6 +20,13 @@ pub fn markdown(entries: &[TranscriptEntry], full: bool) -> String {
         .unwrap();
         writeln!(text, "### Input\n\n{}\n", entry.inbound_body).unwrap();
         writeln!(text, "### Summary\n\n{}\n", entry.output.summary).unwrap();
+        if !entry.output.tools.is_empty() {
+            writeln!(text, "### Tools\n").unwrap();
+            for tool in &entry.output.tools {
+                writeln!(text, "- {tool}").unwrap();
+            }
+            text.push('\n');
+        }
         if let Some(deliverable) = &entry.output.deliverable {
             writeln!(text, "### Deliverable\n\n{}\n", deliverable).unwrap();
         }

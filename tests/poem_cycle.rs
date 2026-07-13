@@ -45,12 +45,14 @@ impl AgentRunner for PoemRunner {
                         topic: "poem-draft".into(),
                         body: "Review this poem.".into(),
                     }],
+                    tools: Vec::new(),
                     complete: true,
                 },
                 "editor" => AgentOutput {
                     summary: "Edited poem.".into(),
                     deliverable: Some("Rain waits in a cup.\nMorning holds the rim.".into()),
                     messages: Vec::new(),
+                    tools: Vec::new(),
                     complete: true,
                 },
                 role => panic!("unexpected role {role}"),
@@ -149,6 +151,7 @@ fn message_output(to: &str, topic: &str, body: &str) -> AgentOutput {
             topic: topic.into(),
             body: body.into(),
         }],
+        tools: Vec::new(),
         complete: true,
     }
 }

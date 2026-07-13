@@ -85,3 +85,18 @@ future seeds.
 
 Stop with Ctrl+C. Restart the same command to load durable messages, releases,
 and ACP sessions.
+
+## Async restaurant planning
+
+TODO files may target an agent:
+
+```text
+to: pastry-chef
+topic: dessert-menu
+
+Create four desserts from docs/menu-direction.md.
+```
+
+The restaurant example proves a head chef can load a project skill, write shared
+direction, create specialist TODOs, and let pastry and sauce work concurrently.
+Captured ACP tool calls appear in the transcript.

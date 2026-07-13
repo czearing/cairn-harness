@@ -1,0 +1,19 @@
+to: sauce-chef
+topic: savory-menu
+
+Read docs/menu-direction.md for the full shared direction, constraints, and
+pantry before starting.
+
+Deliver:
+1. 11 savory a la carte dishes for Ember & Olive (Mediterranean coastal,
+   wood-fire/hearth focused). Respect the protein-repeat limit (max 2 dishes
+   per primary protein) and the olive oil / wood-fire constraints.
+2. Savory tasting menu courses 1-6 (light/raw to rich), building toward the
+   dessert course that pastry-chef will add as course 7. Do not repeat any
+   a la carte dish exactly in the tasting menu.
+3. Every dish must include: name, short description, primary components,
+   cooking method, accompanying sauce/condiment, nut-allergy label, and
+   vegetarian flag where applicable.
+
+No em dashes. Return your recipes in the standard envelope so recipe-tester
+can evaluate them next.

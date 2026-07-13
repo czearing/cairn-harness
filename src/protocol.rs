@@ -15,6 +15,7 @@ pub fn parse_output(text: &str) -> Result<AgentOutput> {
             summary: "Completed deliverable.".into(),
             deliverable: Some(deliverable.into()),
             messages: Vec::new(),
+            tools: Vec::new(),
             complete: true,
         });
     };
@@ -33,6 +34,7 @@ pub fn parse_output(text: &str) -> Result<AgentOutput> {
             summary: "Completed deliverable.".into(),
             deliverable: Some(salvage_deliverable(payload)),
             messages: Vec::new(),
+            tools: Vec::new(),
             complete: true,
         },
         Err(error) => return Err(error).context("invalid agent envelope JSON"),

@@ -6,12 +6,11 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Result;
-use chrono::Utc;
 use tokio::{
     sync::{Semaphore, watch},
     time::{interval, sleep},
 };
+use {anyhow::Result, chrono::Utc};
 
 use crate::{
     config::ProjectConfig,
@@ -124,6 +123,7 @@ async fn process(ctx: &WorkerContext, message: Message) -> Result<()> {
                 summary: detail.clone(),
                 deliverable: None,
                 messages: Vec::new(),
+                tools: Vec::new(),
                 complete: false,
             };
             turn::record(

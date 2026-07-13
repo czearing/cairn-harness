@@ -4,6 +4,9 @@ use crate::{directory::resolve, models::AgentOutput, worker::WorkerContext};
 
 pub async fn dispatch(ctx: &WorkerContext, source_id: &str, output: &AgentOutput) -> Result<()> {
     for (index, message) in output.messages.iter().enumerate() {
+        if crate::todo::has_route(&ctx.config, &message.to, &message.topic)? {
+            continue;
+        }
         let body = match &output.deliverable {
             Some(deliverable) => format!("{}\n\nDeliverable:\n{}", message.body, deliverable),
             None => message.body.clone(),

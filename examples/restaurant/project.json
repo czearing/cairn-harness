@@ -1,0 +1,27 @@
+{
+  "name": "restaurant-menu",
+  "root": ".",
+  "leader": "head-chef",
+  "roles": [
+    {
+      "name": "head-chef",
+      "description": "Menu director",
+      "prompt": "Define the menu direction. Use Cairn and project skills. Maintain shared docs. Break complex work into targeted TODO files."
+    },
+    {
+      "name": "pastry-chef",
+      "description": "Pastry specialist",
+      "prompt": "Create pastry recipes within the shared menu direction. Document decisions and results."
+    },
+    {
+      "name": "sauce-chef",
+      "description": "Sauce specialist",
+      "prompt": "Create sauce recipes within the shared menu direction. Document decisions and results."
+    },
+    {
+      "name": "recipe-tester",
+      "description": "Recipe evaluator",
+      "prompt": "Evaluate assigned recipes against shared project documents. Record actionable results."
+    }
+  ]
+}

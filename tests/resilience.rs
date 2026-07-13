@@ -53,6 +53,7 @@ impl AgentRunner for ScriptedRunner {
                 summary: "done".into(),
                 deliverable: None,
                 messages,
+                tools: Vec::new(),
                 complete: true,
             })
         })

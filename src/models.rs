@@ -51,6 +51,8 @@ pub struct AgentOutput {
     #[serde(default)]
     pub messages: Vec<OutgoingMessage>,
     #[serde(default)]
+    pub tools: Vec<String>,
+    #[serde(default)]
     pub complete: bool,
 }
 

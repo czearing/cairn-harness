@@ -39,6 +39,7 @@ impl AgentRunner for FakeRunner {
                 summary: format!("{} completed work", request.worker.id),
                 deliverable: None,
                 messages,
+                tools: Vec::new(),
                 complete: true,
             })
         })

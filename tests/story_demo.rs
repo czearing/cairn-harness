@@ -164,6 +164,7 @@ fn output(summary: &str, deliverable: Option<&str>, messages: Vec<OutgoingMessag
         summary: summary.into(),
         deliverable: deliverable.map(str::to_owned),
         messages,
+        tools: Vec::new(),
         complete: true,
     }
 }

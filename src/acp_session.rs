@@ -36,8 +36,10 @@ async fn prompt(
         .await
         .context("Copilot produced no update within 10 seconds")??;
     tracing::info!("Copilot agent started responding");
-    let text = read_response(session, first).await?;
-    parse_output(&text)
+    let response = read_response(session, first).await?;
+    let mut output = parse_output(&response.text)?;
+    output.tools = response.tools;
+    Ok(output)
 }
 
 async fn drain_replay(
@@ -59,31 +61,45 @@ async fn drain_replay(
 async fn read_response(
     session: &mut agent_client_protocol::ActiveSession<'_, Agent>,
     first: SessionMessage,
-) -> Result<String> {
+) -> Result<AgentResponse> {
     let mut output = String::new();
+    let mut tools = Vec::new();
     let mut update = first;
     loop {
         match update {
-            SessionMessage::StopReason(_) => return Ok(output),
+            SessionMessage::StopReason(_) => {
+                return Ok(AgentResponse {
+                    text: output,
+                    tools,
+                });
+            }
             SessionMessage::SessionMessage(dispatch) => {
                 MatchDispatch::new(dispatch)
                     .if_notification(async |notification: SessionNotification| {
-                        if let SessionUpdate::AgentMessageChunk(ContentChunk {
-                            content: ContentBlock::Text(text),
-                            ..
-                        }) = notification.update
-                        {
-                            output.push_str(&text.text);
+                        match notification.update {
+                            SessionUpdate::AgentMessageChunk(ContentChunk {
+                                content: ContentBlock::Text(text),
+                                ..
+                            }) => output.push_str(&text.text),
+                            SessionUpdate::ToolCall(call) => tools.push(call.title),
+                            _ => {}
                         }
                         Ok(())
                     })
                     .await
                     .otherwise_ignore()?;
             }
+
             _ => {}
         }
+
         update = timeout(Duration::from_secs(60), session.read_update())
             .await
             .context("Copilot turn completion timed out")??;
     }
+}
+
+struct AgentResponse {
+    text: String,
+    tools: Vec<String>,
 }

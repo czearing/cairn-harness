@@ -82,7 +82,6 @@ fn agent(config: &CopilotConfig, root: &std::path::Path, worker: &WorkerSpec) ->
         "--acp".into(),
         "--allow-all-tools".into(),
         "--disable-builtin-mcps".into(),
-        "--no-custom-instructions".into(),
         "--no-color".into(),
     ]);
     if let Some(path) = cairn_config(config) {

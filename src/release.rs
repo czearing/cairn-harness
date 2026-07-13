@@ -52,10 +52,41 @@ async fn write(
     fn atomic_write(path: &Path, content: &str) -> Result<()> {
         let temp = path.with_extension(format!("tmp-{}", uuid::Uuid::new_v4()));
         std::fs::write(&temp, content)?;
-        if path.exists() {
-            std::fs::remove_file(path)?;
+        if let Err(error) = replace(&temp, path) {
+            let _ = std::fs::remove_file(&temp);
+            return Err(error);
         }
-        std::fs::rename(temp, path)?;
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    fn replace(source: &Path, destination: &Path) -> Result<()> {
+        std::fs::rename(source, destination)?;
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn replace(source: &Path, destination: &Path) -> Result<()> {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::{
+            MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+        };
+        let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+        let destination: Vec<u16> = destination
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        let result = unsafe {
+            MoveFileExW(
+                source.as_ptr(),
+                destination.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if result == 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
         Ok(())
     }
     store
