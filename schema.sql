@@ -56,3 +56,12 @@ CREATE TABLE IF NOT EXISTS turns (
     started_at TEXT NOT NULL,
     completed_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS releases (
+    content_hash TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    content TEXT NOT NULL,
+    path TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);

@@ -17,6 +17,7 @@ struct Cli {
 enum Command {
     Init,
     Ingest,
+    Replenish,
     Send {
         #[arg(long)]
         to: String,
@@ -30,6 +31,10 @@ enum Command {
         idle_exit_ms: u64,
     },
     Step,
+    Watch {
+        #[arg(long)]
+        releases: Option<i64>,
+    },
     Status,
     Transcript {
         #[arg(long)]
@@ -53,6 +58,10 @@ async fn main() -> Result<()> {
             harness.bootstrap().await?;
             println!("ingested {} TODO(s)", harness.ingest_todos().await?);
         }
+        Command::Replenish => {
+            harness.bootstrap().await?;
+            println!("seeded={}", harness.replenish().await?);
+        }
         Command::Send { to, topic, body } => {
             harness.bootstrap().await?;
             let count = harness.send("human", &to, &topic, &body).await?;
@@ -65,6 +74,13 @@ async fn main() -> Result<()> {
         }
         Command::Step => {
             harness.run_steps(1, Duration::from_millis(100)).await?;
+        }
+        Command::Watch { releases } => {
+            if let Some(target) = releases {
+                harness.watch_until(target).await?;
+            } else {
+                harness.watch().await?;
+            }
         }
         Command::Status => {
             harness.bootstrap().await?;

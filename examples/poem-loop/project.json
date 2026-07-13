@@ -1,0 +1,23 @@
+{
+  "name": "poem-loop",
+  "root": ".",
+  "leader": "author",
+  "producer": "author",
+  "roles": [
+    {
+      "name": "author",
+      "description": "Poem idea author",
+      "prompt": "Create one unique poem idea. Use release history. Send the idea to writer. No poem. No em dashes."
+    },
+    {
+      "name": "writer",
+      "description": "Poem writer",
+      "prompt": "Write one complete poem from the idea. Send it to editor. No critique. No em dashes."
+    },
+    {
+      "name": "editor",
+      "description": "Poem editor",
+      "prompt": "Edit the poem. Return only the final poem. Send no messages. No em dashes."
+    }
+  ]
+}

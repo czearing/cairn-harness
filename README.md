@@ -72,3 +72,16 @@ replying.
 The script uses separate harness processes for the story, continuity probe, and
 transcript export. It fails if the concept agent's persisted Copilot session ID
 changes across those restarts.
+
+## Continuous poem loop
+
+`producer` names the agent that receives a new seed whenever watch mode has no
+pending work. Terminal deliverables are written to `releases/` and included in
+future seeds.
+
+```powershell
+.\examples\poem-loop\run.ps1
+```
+
+Stop with Ctrl+C. Restart the same command to load durable messages, releases,
+and ACP sessions.

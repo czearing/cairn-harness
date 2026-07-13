@@ -19,7 +19,7 @@ use crate::{
     handoff,
     models::{AgentOutput, Message, RunRequest, WorkerSpec},
     policy::RuntimePolicy,
-    prompt,
+    prompt, release,
     runner::AgentRunner,
     store::Store,
     turn,
@@ -100,6 +100,7 @@ async fn process(ctx: &WorkerContext, message: Message) -> Result<()> {
             )
             .await?;
             handoff::dispatch(ctx, &message.id, &output).await?;
+            release::publish(&ctx.config, &ctx.store, &ctx.worker.id, &message, &output).await?;
             ctx.store.finish(&message.id, "completed", None).await?;
             ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
         }

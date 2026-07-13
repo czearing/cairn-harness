@@ -11,27 +11,13 @@ use crate::{models::WorkerSpec, persistent_runner::Job, protocol::parse_output};
 
 pub async fn serve(
     mut session: agent_client_protocol::ActiveSession<'_, Agent>,
-    worker: WorkerSpec,
+    _worker: WorkerSpec,
     mut jobs: mpsc::Receiver<Job>,
     ready: oneshot::Sender<Result<String>>,
     loaded: bool,
 ) -> Result<(), agent_client_protocol::Error> {
     if loaded {
         drain_replay(&mut session).await?;
-    } else {
-        session.send_prompt(format!(
-            "Role: {}. {}. {} Reply READY only.",
-            worker.name(),
-            worker.description,
-            worker.prompt
-        ))?;
-        let first = timeout(Duration::from_secs(10), session.read_update())
-            .await
-            .map_err(|_| acp_error("Copilot role startup produced no update"))??;
-        tracing::info!("Copilot role startup started responding");
-        read_response(&mut session, first)
-            .await
-            .map_err(|error| acp_error(&error.to_string()))?;
     }
     let _ = ready.send(Ok(session.session_id().to_string()));
     while let Some(job) = jobs.recv().await {
@@ -100,8 +86,4 @@ async fn read_response(
             .await
             .context("Copilot turn completion timed out")??;
     }
-}
-
-fn acp_error(message: &str) -> agent_client_protocol::Error {
-    agent_client_protocol::Error::internal_error().data(message)
 }

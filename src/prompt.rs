@@ -15,6 +15,7 @@ pub fn build(
     let mut prompt = String::new();
     writeln!(prompt, "Project: {}", config.name).unwrap();
     writeln!(prompt, "Agent: {}", worker.id).unwrap();
+    writeln!(prompt, "Role: {}. {}", worker.description, worker.prompt).unwrap();
     writeln!(prompt, "Activity:").unwrap();
     for state in states {
         writeln!(

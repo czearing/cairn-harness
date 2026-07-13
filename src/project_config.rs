@@ -61,6 +61,12 @@ impl ProjectConfig {
             .iter()
             .find(|role| role.name == self.leader())
             .context("leader must name a configured role")?;
+        if let Some(producer) = &self.producer {
+            self.roles
+                .iter()
+                .find(|role| role.name == producer.as_str())
+                .context("producer must name a configured role")?;
+        }
         for role in &self.roles {
             if role.description.is_empty() || role.prompt.is_empty() {
                 bail!("every role needs a description and prompt");

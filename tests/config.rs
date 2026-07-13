@@ -41,3 +41,19 @@ fn rejects_duplicate_role_names() {
     .unwrap();
     assert!(ProjectConfig::load(&path).is_err());
 }
+
+#[test]
+fn rejects_unknown_producer() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("project.json");
+    std::fs::write(
+        &path,
+        r#"{
+          "name":"test","root":".","producer":"missing","roles":[
+            {"name":"author","description":"Author","prompt":"Create."}
+          ]
+        }"#,
+    )
+    .unwrap();
+    assert!(ProjectConfig::load(&path).is_err());
+}

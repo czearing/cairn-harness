@@ -8,6 +8,7 @@ pub struct ProjectConfig {
     pub name: String,
     pub root: PathBuf,
     pub leader: Option<String>,
+    pub producer: Option<String>,
     #[serde(default = "default_todo_dir")]
     pub todo_dir: PathBuf,
     pub roles: Vec<RoleConfig>,

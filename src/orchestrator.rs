@@ -26,11 +26,11 @@ use crate::{
 };
 
 pub struct Harness {
-    config: ProjectConfig,
-    store: Store,
-    runner: Arc<dyn AgentRunner>,
-    directory: Arc<Directory>,
-    policy: RuntimePolicy,
+    pub(crate) config: ProjectConfig,
+    pub(crate) store: Store,
+    pub(crate) runner: Arc<dyn AgentRunner>,
+    pub(crate) directory: Arc<Directory>,
+    pub(crate) policy: RuntimePolicy,
 }
 
 impl Harness {
@@ -99,6 +99,14 @@ impl Harness {
 
     pub async fn transcript(&self, full: bool) -> Result<String> {
         Ok(transcript::markdown(&self.store.transcript().await?, full))
+    }
+
+    pub async fn watch(&self) -> Result<()> {
+        crate::watch::run(self, None).await
+    }
+
+    pub async fn watch_until(&self, releases: i64) -> Result<()> {
+        crate::watch::run(self, Some(releases)).await
     }
 
     pub async fn run_until_idle(&self, idle_for: Duration) -> Result<()> {

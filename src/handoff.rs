@@ -4,6 +4,10 @@ use crate::{directory::resolve, models::AgentOutput, worker::WorkerContext};
 
 pub async fn dispatch(ctx: &WorkerContext, source_id: &str, output: &AgentOutput) -> Result<()> {
     for (index, message) in output.messages.iter().enumerate() {
+        let body = match &output.deliverable {
+            Some(deliverable) => format!("{}\n\nDeliverable:\n{}", message.body, deliverable),
+            None => message.body.clone(),
+        };
         match resolve(&ctx.directory, &message.to) {
             Ok(recipients) => {
                 for recipient in recipients {
@@ -13,7 +17,7 @@ pub async fn dispatch(ctx: &WorkerContext, source_id: &str, output: &AgentOutput
                             &ctx.worker.id,
                             &recipient,
                             &message.topic,
-                            &message.body,
+                            &body,
                         )
                         .await?;
                 }
@@ -24,7 +28,7 @@ pub async fn dispatch(ctx: &WorkerContext, source_id: &str, output: &AgentOutput
                         &ctx.worker.id,
                         &message.to,
                         &message.topic,
-                        &message.body,
+                        &body,
                         &error.to_string(),
                     )
                     .await?;
