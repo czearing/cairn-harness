@@ -46,6 +46,7 @@ pub async fn run(harness: &Harness, release_target: Option<i64>) -> Result<()> {
             }
             _ = sleep(Duration::from_millis(250)) => {
                 harness.ingest_todos().await?;
+                harness.ingest_work().await?;
                 if let Some(target) = release_target
                     && harness.store.release_count().await? >= target
                 {

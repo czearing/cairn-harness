@@ -97,6 +97,10 @@ impl Harness {
         todo::ingest(&self.config, &self.store, &leader).await
     }
 
+    pub async fn ingest_work(&self) -> Result<usize> {
+        crate::work_item::ingest(&self.config, &self.store).await
+    }
+
     pub async fn transcript(&self, full: bool) -> Result<String> {
         Ok(transcript::markdown(&self.store.transcript().await?, full))
     }
@@ -124,6 +128,7 @@ impl Harness {
     async fn run_with_budget(&self, idle_for: Duration, runs: usize) -> Result<()> {
         self.bootstrap().await?;
         self.ingest_todos().await?;
+        self.ingest_work().await?;
         let active = Arc::new(AtomicUsize::new(0));
         let budget = Arc::new(AtomicUsize::new(runs));
         let gate = Arc::new(Semaphore::new(self.policy.max_concurrency));

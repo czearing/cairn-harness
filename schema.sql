@@ -65,3 +65,13 @@ CREATE TABLE IF NOT EXISTS releases (
     path TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS work_items (
+    id TEXT PRIMARY KEY,
+    path TEXT NOT NULL UNIQUE,
+    content_hash TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+);

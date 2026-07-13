@@ -23,6 +23,8 @@ pub mod transcript;
 mod transcript_store;
 mod turn;
 mod watch;
+mod work_item;
+mod work_item_store;
 mod worker;
 
 use std::{path::Path, sync::Arc};

@@ -49,6 +49,10 @@ impl ProjectConfig {
         self.root.join(&self.todo_dir)
     }
 
+    pub fn work_path(&self) -> Option<PathBuf> {
+        self.work_dir.as_ref().map(|path| self.root.join(path))
+    }
+
     fn validate(&self) -> Result<()> {
         if self.roles.is_empty() {
             bail!("project must contain at least one role");

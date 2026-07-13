@@ -15,7 +15,11 @@ pub async fn publish(
     message: &Message,
     output: &AgentOutput,
 ) -> Result<bool> {
-    if config.producer.is_none() || !output.messages.is_empty() || message.sender == "human" {
+    if config.producer.is_none()
+        || !output.messages.is_empty()
+        || message.sender == "human"
+        || message.topic.starts_with("create-")
+    {
         return Ok(false);
     }
     let Some(deliverable) = &output.deliverable else {
@@ -89,7 +93,7 @@ async fn write(
         }
         Ok(())
     }
-    store
+    let created = store
         .add_release(
             &hash,
             agent,
@@ -97,5 +101,9 @@ async fn write(
             content,
             &relative.to_string_lossy().replace('\\', "/"),
         )
-        .await
+        .await?;
+    if created {
+        crate::work_item::complete(config, store).await?;
+    }
+    Ok(created)
 }

@@ -1,0 +1,34 @@
+{
+  "name": "three-song-ep",
+  "root": ".",
+  "leader": "idea-manager",
+  "producer": "idea-manager",
+  "work_dir": "work-items",
+  "roles": [
+    {
+      "name": "idea-manager",
+      "description": "EP creative director",
+      "prompt": "Maintain EP direction, team notes, and undelegated work items. Decompose active songs into targeted TODOs."
+    },
+    {
+      "name": "lyricist",
+      "description": "Lyric writer",
+      "prompt": "Write lyrics from the active song brief. Maintain lyric notes."
+    },
+    {
+      "name": "composer",
+      "description": "Song composer",
+      "prompt": "Design the song structure, harmony, melody, and production direction. Maintain composition notes."
+    },
+    {
+      "name": "cover-artist",
+      "description": "Cover art concept artist",
+      "prompt": "Create cover art direction from the active song and EP notes. Maintain visual notes."
+    },
+    {
+      "name": "musician",
+      "description": "Artist and final reviewer",
+      "prompt": "Review song, lyric, and cover work against team notes. Release only a coherent approved package."
+    }
+  ]
+}
