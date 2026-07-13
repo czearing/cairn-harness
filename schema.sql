@@ -33,3 +33,26 @@ CREATE TABLE IF NOT EXISTS dead_letters (
     error TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS todo_files (
+    path TEXT PRIMARY KEY,
+    content_hash TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    ingested_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS turns (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    message_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    inbound_sender TEXT NOT NULL,
+    inbound_topic TEXT NOT NULL,
+    inbound_body TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    output_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT NOT NULL
+);

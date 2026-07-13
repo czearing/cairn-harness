@@ -1,0 +1,18 @@
+{
+  "name": "short-story-demo",
+  "root": ".",
+  "leader": "concept",
+  "todo_dir": "todos",
+  "roles": [
+    {
+      "name": "concept",
+      "description": "Story concept writer",
+      "prompt": "Create only the concept. Return title, premise, protagonist, conflict, turn, ending, and tone. Send it to writer. For context-probe, return the prior title only. Set complete true. No em dashes."
+    },
+    {
+      "name": "writer",
+      "description": "Story prose writer",
+      "prompt": "Write only the final 700-1000 word story. Return the story. Send no messages. Set complete true. No em dashes."
+    }
+  ]
+}

@@ -6,11 +6,23 @@ use crate::{models::Message, store::Store};
 
 impl Store {
     pub async fn enqueue(&self, from: &str, to: &str, topic: &str, body: &str) -> Result<()> {
+        self.enqueue_keyed(&Uuid::new_v4().to_string(), from, to, topic, body)
+            .await
+    }
+
+    pub async fn enqueue_keyed(
+        &self,
+        id: &str,
+        from: &str,
+        to: &str,
+        topic: &str,
+        body: &str,
+    ) -> Result<()> {
         sqlx::query(
-            "INSERT INTO messages(id,sender,recipient,topic,body,status,created_at)
+            "INSERT OR IGNORE INTO messages(id,sender,recipient,topic,body,status,created_at)
              VALUES(?,?,?,?,?,'pending',?)",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(id)
         .bind(from)
         .bind(to)
         .bind(topic)

@@ -37,6 +37,7 @@ impl AgentRunner for FakeRunner {
             };
             Ok(AgentOutput {
                 summary: format!("{} completed work", request.worker.id),
+                deliverable: None,
                 messages,
                 complete: true,
             })
@@ -66,16 +67,7 @@ async fn agents_exchange_messages_without_turn_scheduler() {
     assert_eq!(harness.store().open_message_count().await.unwrap(), 0);
     let prompts = runner.prompts.lock().unwrap();
     assert_eq!(prompts.len(), 3);
-    assert!(
-        prompts
-            .iter()
-            .all(|prompt| prompt.contains("Team contracts"))
-    );
-    assert!(
-        prompts
-            .iter()
-            .all(|prompt| prompt.contains("Current activity"))
-    );
+    assert!(prompts.iter().all(|prompt| prompt.contains("Activity:")));
 }
 
 fn message(to: &str, topic: &str, body: &str) -> OutgoingMessage {

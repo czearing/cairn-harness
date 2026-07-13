@@ -14,6 +14,7 @@ use anyhow::{Result, bail};
 use cairn_harness::{
     models::{AgentOutput, OutgoingMessage, RunRequest},
     orchestrator::Harness,
+    policy::RuntimePolicy,
     runner::AgentRunner,
     store::Store,
 };
@@ -50,6 +51,7 @@ impl AgentRunner for ScriptedRunner {
             };
             Ok(AgentOutput {
                 summary: "done".into(),
+                deliverable: None,
                 messages,
                 complete: true,
             })
@@ -100,14 +102,15 @@ async fn transient_failures_retry_to_configured_limit() {
 #[tokio::test]
 async fn run_budget_stops_unbounded_agent_ping_pong() {
     let temp = tempdir().unwrap();
-    let mut config = config(temp.path());
-    config.team.max_runs_per_start = 3;
+    let config = config(temp.path());
+    let mut policy = RuntimePolicy::for_workers(config.workers().len());
+    policy.max_runs_per_start = 3;
     let store = Store::open(&config.database_path()).await.unwrap();
     let runner = Arc::new(ScriptedRunner {
         mode: Mode::SelfLoop,
         calls: AtomicUsize::new(0),
     });
-    let harness = Harness::new(config, store, runner.clone());
+    let harness = Harness::with_policy(config, store, runner.clone(), policy);
     harness.bootstrap().await.unwrap();
     harness.send("human", "pm", "loop", "work").await.unwrap();
     harness
@@ -133,6 +136,22 @@ async fn stale_claims_return_to_the_inbox() {
     let future = (Utc::now() + ChronoDuration::seconds(1)).to_rfc3339();
     assert_eq!(store.recover(&future).await.unwrap(), 1);
     assert!(store.claim(&worker.id).await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn deterministic_handoff_ids_prevent_duplicates() {
+    let temp = tempdir().unwrap();
+    let config = config(temp.path());
+    let store = Store::open(&config.database_path()).await.unwrap();
+    store
+        .enqueue_keyed("source:0:writer", "concept", "writer", "idea", "body")
+        .await
+        .unwrap();
+    store
+        .enqueue_keyed("source:0:writer", "concept", "writer", "idea", "body")
+        .await
+        .unwrap();
+    assert_eq!(store.message_count("pending").await.unwrap(), 1);
 }
 
 fn message(to: &str) -> OutgoingMessage {

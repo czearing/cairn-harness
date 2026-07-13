@@ -1,15 +1,24 @@
-use std::{future::Future, pin::Pin};
-
-use anyhow::{Context, Result, bail};
-use tokio::process::Command;
+use std::{future::Future, path::PathBuf, pin::Pin};
 
 use crate::{
     config::CopilotConfig,
-    models::{AgentOutput, RunRequest},
+    models::{AgentOutput, RunRequest, WorkerSpec},
     protocol::parse_output,
+    shell_command,
 };
+use anyhow::{Context, Result, bail};
+use tokio::time::{Duration, timeout};
 
 pub trait AgentRunner: Send + Sync {
+    fn warm<'a>(
+        &'a self,
+        _project_root: PathBuf,
+        _worker: WorkerSpec,
+        _session_id: String,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>>> + Send + 'a>> {
+        Box::pin(async { Ok(None) })
+    }
+
     fn run<'a>(
         &'a self,
         request: RunRequest,
@@ -26,43 +35,31 @@ impl CopilotRunner {
     }
 
     async fn execute(&self, request: RunRequest) -> Result<AgentOutput> {
-        let mut command = Command::new(&self.config.executable);
+        let mut command = shell_command::new(&self.config.executable);
         command.args(&self.config.arguments);
+        command.env("CAIRN_SKILL_WORKER", "1");
         command
-            .arg("-C")
-            .arg(&request.project_root)
-            .arg("--autopilot")
-            .arg("--no-ask-user")
-            .arg("--silent")
-            .arg("--stream")
-            .arg("off")
-            .arg("--max-autopilot-continues")
-            .arg(self.config.max_autopilot_continues.to_string())
-            .arg("--max-ai-credits")
-            .arg(self.config.max_ai_credits.to_string())
-            .arg("--session-id")
-            .arg(&request.session_id)
             .arg("-p")
             .arg(&request.prompt)
+            .arg("-s")
+            .arg("--no-color")
+            .arg("-C")
+            .arg(&request.project_root)
+            .arg("--stream")
+            .arg("off")
+            .arg("--session-id")
+            .arg(&request.session_id)
+            .arg("--allow-all-tools")
             .kill_on_drop(true);
-        if self.config.allow_all_tools {
-            command.arg("--allow-all-tools");
-        }
-        if self.config.include_mcp_instructions {
-            command.arg("--allow-all-mcp-server-instructions");
-        }
-        for tool in &self.config.denied_tools {
-            command.arg("--deny-tool").arg(tool);
-        }
         if let Some(model) = &self.config.model {
             command.arg("--model").arg(model);
         }
         if let Some(path) = &self.config.additional_mcp_config {
             command.arg("--additional-mcp-config").arg(path);
         }
-        let output = command
-            .output()
+        let output = timeout(Duration::from_secs(10), command.output())
             .await
+            .context("Copilot timed out after 10 seconds")?
             .with_context(|| format!("failed to run Copilot for agent {}", request.worker.id))?;
         if !output.status.success() {
             bail!(

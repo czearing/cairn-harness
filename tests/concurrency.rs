@@ -14,6 +14,7 @@ use anyhow::Result;
 use cairn_harness::{
     models::{AgentOutput, RunRequest},
     orchestrator::Harness,
+    policy::RuntimePolicy,
     runner::AgentRunner,
     store::Store,
 };
@@ -38,6 +39,7 @@ impl AgentRunner for DelayRunner {
             self.active.fetch_sub(1, Ordering::SeqCst);
             Ok(AgentOutput {
                 summary: "done".into(),
+                deliverable: None,
                 messages: Vec::new(),
                 complete: true,
             })
@@ -48,14 +50,15 @@ impl AgentRunner for DelayRunner {
 #[tokio::test]
 async fn configured_semaphore_caps_parallel_agents() {
     let temp = tempdir().unwrap();
-    let mut config = config(temp.path());
-    config.team.max_concurrency = 1;
+    let config = config(temp.path());
+    let mut policy = RuntimePolicy::for_workers(config.workers().len());
+    policy.max_concurrency = 1;
     let store = Store::open(&config.database_path()).await.unwrap();
     let runner = Arc::new(DelayRunner {
         active: AtomicUsize::new(0),
         maximum: AtomicUsize::new(0),
     });
-    let harness = Harness::new(config, store, runner.clone());
+    let harness = Harness::with_policy(config, store, runner.clone(), policy);
     harness.bootstrap().await.unwrap();
     harness.send("human", "pm", "one", "work").await.unwrap();
     harness

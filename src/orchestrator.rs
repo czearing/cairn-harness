@@ -18,8 +18,10 @@ use crate::{
     config::ProjectConfig,
     directory::{Directory, build, resolve},
     models::AgentState,
+    policy::RuntimePolicy,
     runner::AgentRunner,
     store::Store,
+    todo, transcript,
     worker::{WorkerContext, run},
 };
 
@@ -28,16 +30,28 @@ pub struct Harness {
     store: Store,
     runner: Arc<dyn AgentRunner>,
     directory: Arc<Directory>,
+    policy: RuntimePolicy,
 }
 
 impl Harness {
     pub fn new(config: ProjectConfig, store: Store, runner: Arc<dyn AgentRunner>) -> Self {
+        let policy = RuntimePolicy::for_workers(config.workers().len());
+        Self::with_policy(config, store, runner, policy)
+    }
+
+    pub fn with_policy(
+        config: ProjectConfig,
+        store: Store,
+        runner: Arc<dyn AgentRunner>,
+        policy: RuntimePolicy,
+    ) -> Self {
         let directory = Arc::new(build(&config.workers()));
         Self {
             config,
             store,
             runner,
             directory,
+            policy,
         }
     }
 
@@ -46,12 +60,19 @@ impl Harness {
     }
 
     pub async fn bootstrap(&self) -> Result<()> {
-        let lease = ChronoDuration::milliseconds(self.config.team.claim_lease_ms as i64);
+        let lease = ChronoDuration::milliseconds(self.policy.claim_lease_ms as i64);
         self.store
             .recover(&(Utc::now() - lease).to_rfc3339())
             .await?;
         for worker in self.config.workers() {
-            self.store.register(&worker).await?;
+            let state = self.store.register(&worker).await?;
+            if let Some(session_id) = self
+                .runner
+                .warm(self.config.root.clone(), worker, state.session_id)
+                .await?
+            {
+                self.store.set_session(&state.agent_id, &session_id).await?;
+            }
         }
         Ok(())
     }
@@ -68,11 +89,36 @@ impl Harness {
         self.store.states().await
     }
 
+    pub async fn ingest_todos(&self) -> Result<usize> {
+        let leader = resolve(&self.directory, self.config.leader())?
+            .into_iter()
+            .next()
+            .expect("validated leader has one worker");
+        todo::ingest(&self.config, &self.store, &leader).await
+    }
+
+    pub async fn transcript(&self, full: bool) -> Result<String> {
+        Ok(transcript::markdown(&self.store.transcript().await?, full))
+    }
+
     pub async fn run_until_idle(&self, idle_for: Duration) -> Result<()> {
+        self.run_with_budget(idle_for, self.policy.max_runs_per_start)
+            .await
+    }
+
+    pub async fn run_steps(&self, steps: usize, idle_for: Duration) -> Result<()> {
+        if steps == 0 {
+            bail!("steps must be greater than zero");
+        }
+        self.run_with_budget(idle_for, steps).await
+    }
+
+    async fn run_with_budget(&self, idle_for: Duration, runs: usize) -> Result<()> {
         self.bootstrap().await?;
+        self.ingest_todos().await?;
         let active = Arc::new(AtomicUsize::new(0));
-        let budget = Arc::new(AtomicUsize::new(self.config.team.max_runs_per_start));
-        let gate = Arc::new(Semaphore::new(self.config.team.max_concurrency));
+        let budget = Arc::new(AtomicUsize::new(runs));
+        let gate = Arc::new(Semaphore::new(self.policy.max_concurrency));
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let mut tasks = JoinSet::new();
         for worker in self.config.workers() {
@@ -85,6 +131,7 @@ impl Harness {
                 gate: gate.clone(),
                 active: active.clone(),
                 budget: budget.clone(),
+                policy: self.policy.clone(),
                 shutdown: shutdown_rx.clone(),
             }));
         }

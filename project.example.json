@@ -1,45 +1,23 @@
 {
   "name": "example-product",
   "root": ".",
-  "team": {
-    "max_agents": 3,
-    "max_concurrency": 3,
-    "max_runs_per_start": 100,
-    "max_attempts": 3,
-    "claim_lease_ms": 60000,
-    "poll_interval_ms": 50,
-    "roles": [
-      {
-        "name": "pm",
-        "instances": 1,
-        "owns": ["scope", "priorities", "acceptance"],
-        "contract": "Turn goals into bounded work and resolve product dependencies."
-      },
-      {
-        "name": "designer",
-        "instances": 1,
-        "owns": ["flows", "interaction", "visual system"],
-        "contract": "Define implementable behavior and send precise contracts to engineering."
-      },
-      {
-        "name": "coder",
-        "instances": 1,
-        "owns": ["implementation", "tests", "performance"],
-        "contract": "Implement approved contracts and return measured evidence."
-      }
-    ]
-  },
-  "copilot": {
-    "executable": "copilot",
-    "model": "auto",
-    "max_autopilot_continues": 5,
-    "max_ai_credits": 10,
-    "allow_all_tools": true,
-    "include_mcp_instructions": true,
-    "denied_tools": [
-      "shell(git push)",
-      "shell(git reset --hard)",
-      "shell(git clean:*)"
-    ]
-  }
+  "leader": "pm",
+  "todo_dir": "todos",
+  "roles": [
+    {
+      "name": "pm",
+      "description": "Product manager",
+      "prompt": "Define scope and acceptance. Hand off decisions. Do not design or code."
+    },
+    {
+      "name": "designer",
+      "description": "Product designer",
+      "prompt": "Define flows and interactions. Hand specifications to coder. Do not code."
+    },
+    {
+      "name": "coder",
+      "description": "Software engineer",
+      "prompt": "Implement, test, and measure. Do not redo product or design work."
+    }
+  ]
 }

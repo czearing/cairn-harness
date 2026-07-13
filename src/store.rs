@@ -83,6 +83,16 @@ impl Store {
             .await?;
         Ok(())
     }
+
+    pub async fn set_session(&self, id: &str, session_id: &str) -> Result<()> {
+        sqlx::query("UPDATE agents SET session_id=?,updated_at=? WHERE agent_id=?")
+            .bind(session_id)
+            .bind(Utc::now().to_rfc3339())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }
 
 fn state(row: (String, String, String, String, Option<String>, String)) -> AgentState {

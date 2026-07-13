@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::Result;
+use chrono::Utc;
 use tokio::{
     sync::{Semaphore, watch},
     time::{interval, sleep},
@@ -14,11 +15,14 @@ use tokio::{
 
 use crate::{
     config::ProjectConfig,
-    directory::{Directory, resolve},
+    directory::Directory,
+    handoff,
     models::{AgentOutput, Message, RunRequest, WorkerSpec},
+    policy::RuntimePolicy,
     prompt,
     runner::AgentRunner,
     store::Store,
+    turn,
 };
 
 pub(crate) struct WorkerContext {
@@ -30,11 +34,12 @@ pub(crate) struct WorkerContext {
     pub gate: Arc<Semaphore>,
     pub active: Arc<AtomicUsize>,
     pub budget: Arc<AtomicUsize>,
+    pub policy: RuntimePolicy,
     pub shutdown: watch::Receiver<bool>,
 }
 
 pub(crate) async fn run(mut ctx: WorkerContext) -> Result<()> {
-    let poll = Duration::from_millis(ctx.config.team.poll_interval_ms);
+    let poll = Duration::from_millis(ctx.policy.poll_interval_ms);
     loop {
         if *ctx.shutdown.borrow() {
             return Ok(());
@@ -68,23 +73,71 @@ async fn process(ctx: &WorkerContext, message: Message) -> Result<()> {
         .await?;
     let state = ctx.store.agent(&ctx.worker.id).await?;
     let states = ctx.store.states().await?;
+    let prompt = prompt::build(&ctx.config, &ctx.worker, &states, &message);
+    let session_id = state.session_id;
     let request = RunRequest {
         project_root: ctx.config.root.clone(),
         worker: ctx.worker.clone(),
-        session_id: state.session_id,
-        prompt: prompt::build(&ctx.config, &ctx.worker, &states, &message),
+        session_id: session_id.clone(),
+        prompt: prompt.clone(),
     };
+    let started_at = Utc::now().to_rfc3339();
     let permit = ctx.gate.clone().acquire_owned().await?;
     let result = run_with_lease(ctx, &message.id, request).await;
     drop(permit);
+    let completed_at = Utc::now().to_rfc3339();
     match result {
         Ok(output) if output.is_actionable() => {
-            dispatch(ctx, &output).await?;
+            turn::record(
+                ctx,
+                &message,
+                &session_id,
+                &prompt,
+                &output,
+                "completed",
+                &started_at,
+                &completed_at,
+            )
+            .await?;
+            handoff::dispatch(ctx, &message.id, &output).await?;
             ctx.store.finish(&message.id, "completed", None).await?;
             ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
         }
-        Ok(_) => handle_failure(ctx, &message, "agent returned no next action").await?,
-        Err(error) => handle_failure(ctx, &message, &error.to_string()).await?,
+        Ok(output) => {
+            turn::record(
+                ctx,
+                &message,
+                &session_id,
+                &prompt,
+                &output,
+                "invalid",
+                &started_at,
+                &completed_at,
+            )
+            .await?;
+            handle_failure(ctx, &message, "agent returned no next action").await?;
+        }
+        Err(error) => {
+            let detail = format!("{error:#}");
+            let output = AgentOutput {
+                summary: detail.clone(),
+                deliverable: None,
+                messages: Vec::new(),
+                complete: false,
+            };
+            turn::record(
+                ctx,
+                &message,
+                &session_id,
+                &prompt,
+                &output,
+                "failed",
+                &started_at,
+                &completed_at,
+            )
+            .await?;
+            handle_failure(ctx, &message, &detail).await?;
+        }
     }
     Ok(())
 }
@@ -96,7 +149,7 @@ async fn run_with_lease(
 ) -> Result<AgentOutput> {
     let run = ctx.runner.run(request);
     tokio::pin!(run);
-    let heartbeat = Duration::from_millis((ctx.config.team.claim_lease_ms / 3).max(100));
+    let heartbeat = Duration::from_millis((ctx.policy.claim_lease_ms / 3).max(100));
     let mut ticks = interval(heartbeat);
     ticks.tick().await;
     loop {
@@ -109,35 +162,8 @@ async fn run_with_lease(
     }
 }
 
-async fn dispatch(ctx: &WorkerContext, output: &AgentOutput) -> Result<()> {
-    for message in &output.messages {
-        match resolve(&ctx.directory, &message.to) {
-            Ok(recipients) => {
-                for recipient in recipients {
-                    ctx.store
-                        .enqueue(&ctx.worker.id, &recipient, &message.topic, &message.body)
-                        .await?;
-                }
-            }
-            Err(error) => {
-                ctx.store
-                    .dead_letter(
-                        &ctx.worker.id,
-                        &message.to,
-                        &message.topic,
-                        &message.body,
-                        &error.to_string(),
-                    )
-                    .await?;
-                tracing::warn!(agent = %ctx.worker.id, target = %message.to, %error, "message dead-lettered");
-            }
-        }
-    }
-    Ok(())
-}
-
 async fn handle_failure(ctx: &WorkerContext, message: &Message, error: &str) -> Result<()> {
-    if message.attempts < ctx.config.team.max_attempts {
+    if message.attempts < ctx.policy.max_attempts {
         ctx.store.retry(&message.id, error).await?;
         ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
     } else {

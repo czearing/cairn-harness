@@ -9,6 +9,7 @@ use tempfile::tempdir;
 use uuid::Uuid;
 
 #[tokio::test]
+#[cfg(windows)]
 async fn parses_protocol_from_an_isolated_shell_process() {
     let temp = tempdir().unwrap();
     let script = temp.path().join("fake-copilot.ps1");
@@ -16,28 +17,16 @@ async fn parses_protocol_from_an_isolated_shell_process() {
     std::fs::write(
         &script,
         "param([string]$LogPath)\n\
-         $args | Set-Content -Path $LogPath\n\
+         @($env:CAIRN_SKILL_WORKER) + $args | Set-Content -Path $LogPath\n\
          Write-Output 'CAIRN_ENVELOPE_BEGIN'\n\
          Write-Output '{\"summary\":\"shell ok\",\"messages\":[],\"complete\":true}'\n\
          Write-Output 'CAIRN_ENVELOPE_END'\n",
     )
     .unwrap();
     let runner = CopilotRunner::new(CopilotConfig {
-        executable: PathBuf::from("powershell"),
-        arguments: vec![
-            "-NoProfile".into(),
-            "-ExecutionPolicy".into(),
-            "Bypass".into(),
-            "-File".into(),
-            script.display().to_string(),
-            arguments.display().to_string(),
-        ],
+        executable: PathBuf::from(&script),
+        arguments: vec![arguments.display().to_string()],
         model: None,
-        max_autopilot_continues: 1,
-        max_ai_credits: 1.0,
-        allow_all_tools: false,
-        include_mcp_instructions: false,
-        denied_tools: Vec::new(),
         additional_mcp_config: None,
     });
     let output = runner
@@ -46,8 +35,8 @@ async fn parses_protocol_from_an_isolated_shell_process() {
             worker: WorkerSpec {
                 id: "pm".into(),
                 role: "pm".into(),
-                contract: "lead".into(),
-                owns: Vec::new(),
+                description: "Product lead".into(),
+                prompt: "Lead the work.".into(),
             },
             session_id: Uuid::new_v4().to_string(),
             prompt: "test".into(),
@@ -58,7 +47,45 @@ async fn parses_protocol_from_an_isolated_shell_process() {
     assert_eq!(output.summary, "shell ok");
     assert!(output.complete);
     let arguments = std::fs::read_to_string(arguments).unwrap();
-    assert!(arguments.contains("--autopilot"));
+    assert!(arguments.lines().next().is_some_and(|line| line == "1"));
+    assert!(!arguments.contains("--autopilot"));
     assert!(arguments.contains("--session-id"));
-    assert!(arguments.contains("--max-ai-credits"));
+    assert!(!arguments.contains("--max-ai-credits"));
+    assert!(arguments.contains("--no-color"));
+}
+
+#[tokio::test]
+#[cfg(windows)]
+async fn one_shell_run_is_bounded_and_argument_safe() {
+    let temp = tempdir().unwrap();
+    let script = temp.path().join("fake-copilot.ps1");
+    std::fs::write(
+        &script,
+        "Write-Output 'CAIRN_ENVELOPE_BEGIN'\n\
+         Write-Output '{\"summary\":\"one\",\"deliverable\":null,\"messages\":[],\"complete\":true}'\n\
+         Write-Output 'CAIRN_ENVELOPE_END'\n",
+    )
+    .unwrap();
+    let runner = CopilotRunner::new(CopilotConfig {
+        executable: script,
+        arguments: Vec::new(),
+        model: None,
+        additional_mcp_config: None,
+    });
+    let output = runner.run(request(temp.path())).await.unwrap();
+    assert_eq!(output.summary, "one");
+}
+
+fn request(root: &std::path::Path) -> RunRequest {
+    RunRequest {
+        project_root: root.into(),
+        worker: WorkerSpec {
+            id: "pm".into(),
+            role: "pm".into(),
+            description: "Lead".into(),
+            prompt: "Lead.".into(),
+        },
+        session_id: Uuid::new_v4().to_string(),
+        prompt: "test".into(),
+    }
 }

@@ -6,10 +6,12 @@ session; no model API token is required.
 
 ## MVP
 
-- A project JSON defines roles, contracts, ownership, replicas, and process caps.
+- A project JSON defines a leader and roles.
 - Each agent owns a durable Copilot session and an independent Tokio worker loop.
 - SQLite provides atomic inbox claims, status, and crash-resistant coordination.
-- Every assignment includes all role contracts and current agent activity.
+- Every assignment includes the team and current agent activity.
+- A configured leader receives idempotent files from the project TODO directory.
+- Short role prompts define responsibility.
 - Agents communicate by emitting structured messages to roles or named workers.
 - A semaphore enforces the configured maximum concurrent Copilot processes.
 - Claim leases recover interrupted work after a crashed supervisor.
@@ -27,7 +29,9 @@ cargo run -- --config project.json init
 cargo run -- --config project.json send `
   --to pm --topic goal --body "Design and implement the requested feature."
 cargo run -- --config project.json run
+cargo run -- --config project.json step
 cargo run -- --config project.json status
+cargo run -- --config project.json transcript --full
 ```
 
 Copilot CLI must already be authenticated with `copilot login`. Cairn remains
@@ -54,3 +58,17 @@ cargo test
 
 Tests use fake runners and temporary SQLite databases. They do not invoke
 Copilot or consume AI credits.
+
+## Short-story demo
+
+The demo config defines only a concept agent and a writer. The concept agent
+creates one idea and sends one handoff; the writer produces the story without
+replying.
+
+```powershell
+.\examples\short-story\run-demo.ps1 -Reset
+```
+
+The script uses separate harness processes for the story, continuity probe, and
+transcript export. It fails if the concept agent's persisted Copilot session ID
+changes across those restarts.

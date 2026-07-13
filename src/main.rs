@@ -16,6 +16,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Init,
+    Ingest,
     Send {
         #[arg(long)]
         to: String,
@@ -28,7 +29,14 @@ enum Command {
         #[arg(long, default_value_t = 1_000)]
         idle_exit_ms: u64,
     },
+    Step,
     Status,
+    Transcript {
+        #[arg(long)]
+        full: bool,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[tokio::main]
@@ -41,6 +49,10 @@ async fn main() -> Result<()> {
             harness.bootstrap().await?;
             println!("initialized {}", harness.config().name);
         }
+        Command::Ingest => {
+            harness.bootstrap().await?;
+            println!("ingested {} TODO(s)", harness.ingest_todos().await?);
+        }
         Command::Send { to, topic, body } => {
             harness.bootstrap().await?;
             let count = harness.send("human", &to, &topic, &body).await?;
@@ -51,12 +63,26 @@ async fn main() -> Result<()> {
                 .run_until_idle(Duration::from_millis(idle_exit_ms))
                 .await?;
         }
+        Command::Step => {
+            harness.run_steps(1, Duration::from_millis(100)).await?;
+        }
         Command::Status => {
             harness.bootstrap().await?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&harness.status().await?)?
             );
+        }
+        Command::Transcript { full, json } => {
+            harness.bootstrap().await?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&harness.store().transcript().await?)?
+                );
+            } else {
+                print!("{}", harness.transcript(full).await?);
+            }
         }
     }
     Ok(())
