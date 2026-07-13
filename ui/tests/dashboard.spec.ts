@@ -55,6 +55,7 @@ test("agent chat shows human and inter-agent history", async ({ page }) => {
   await expect(dialog.getByText("I am checking the launch dependencies.")).toBeVisible();
   await expect(dialog.getByText("Tool: view")).toBeVisible();
   await expect(dialog.getByText("Session stopped").first()).toBeVisible();
+  await expect(dialog.getByText("SYSTEM ROLE: private harness instructions")).toHaveCount(0);
 });
 
 test("todo and activity rows open their full source context", async ({ page }) => {
@@ -132,6 +133,14 @@ test("chat uses accent for the user and stable identity colors for agents", asyn
   await expect(user).toContainText("You");
   expect(await user.evaluate((node) => getComputedStyle(node).alignSelf)).toBe("flex-end");
   expect(await agent.evaluate((node) => getComputedStyle(node).alignSelf)).toBe("flex-start");
+});
+
+test("opening a conversation lands on the latest message", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open conversation with lead" }).click();
+  const history = page.getByLabel("Conversation history with lead");
+  await expect.poll(() => history.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeLessThanOrEqual(1);
+  expect(await history.evaluate((node) => getComputedStyle(node).scrollbarColor)).not.toBe("auto");
 });
 
 test("UI starts one project worker and mutations do not duplicate it", async ({ page }) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import type { Agent, ChatMessage } from "@/lib/types";
 import { agentColor } from "@/lib/colors";
 import { MessageComposer } from "../MessageComposer/MessageComposer";
@@ -10,19 +10,23 @@ import styles from "./ChatPanel.module.css";
 interface Props { agent: Agent; messages: ChatMessage[]; colors?: Record<string, string>; focusId?: string; onSend: (body: string) => Promise<void>; }
 
 export function ChatPanel({ agent, messages, colors = {}, focusId, onSend }: Props) {
+  const history = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!focusId) return;
     const frame = requestAnimationFrame(() => {
-      const target = document.querySelector<HTMLElement>(`[data-chat-id="${CSS.escape(focusId)}"]`);
+      if (!focusId) {
+        history.current?.scrollTo({ top: history.current.scrollHeight });
+        return;
+      }
+      const target = history.current?.querySelector<HTMLElement>(`[data-chat-id="${CSS.escape(focusId)}"]`);
       target?.scrollIntoView({ block: "center" });
       target?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [focusId]);
+  }, [focusId, messages.length]);
   return (
     <div className={styles.panel}>
       <header><div><h3>{agent.id}</h3><p>{agent.role}</p></div><StatusPill status={agent.status} /></header>
-      <div className={styles.history} aria-label={`Conversation history with ${agent.id}`}>
+      <div ref={history} className={styles.history} aria-label={`Conversation history with ${agent.id}`}>
         {messages.length ? messages.map((message) => <Bubble key={message.id} message={message} agent={agent.id} colors={colors} focused={message.id === focusId} />) : <div className={styles.empty}>No messages yet</div>}
       </div>
       <div className={styles.composer}><MessageComposer agent={agent.id} onSend={onSend} /></div>

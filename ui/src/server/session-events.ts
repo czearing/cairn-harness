@@ -23,8 +23,6 @@ function parseLine(line: string, agent: string, sessionId: string, index: number
     const data = event.data || {};
     const timestamp = eventTime(event.timestamp);
     switch (event.type) {
-      case "user.message":
-        return [item(sessionId, index, "dashboard", agent, String(data.content || ""), timestamp, "message", "Prompt")];
       case "assistant.message": {
         const output = [];
         if (data.reasoningText) output.push(item(sessionId, index, agent, "team", String(data.reasoningText), timestamp, "assistant", "Reasoning"));
