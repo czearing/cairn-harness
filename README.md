@@ -99,3 +99,16 @@ Create four desserts from docs/menu-direction.md.
 The restaurant example proves a head chef can load a project skill, write shared
 direction, create specialist TODOs, and let pastry and sauce work concurrently.
 Captured ACP tool calls appear in the transcript.
+
+## Dashboard
+
+The `ui` package provides the local operations dashboard.
+
+```powershell
+cd ui
+npm install
+npm run dev
+```
+
+It discovers example projects by default. Set `HARNESS_PROJECTS` to a
+semicolon-separated list of project config paths for another workspace.

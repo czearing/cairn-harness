@@ -1,0 +1,4 @@
+.panel { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-1); overflow: hidden; }
+.panel > header { min-height: 45px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 14px; border-bottom: 1px solid var(--border); }
+.panel h2 { margin: 0; font-size: 11px; font-weight: 620; color: var(--text-muted); letter-spacing: .04em; text-transform: uppercase; }
+.panel > div { padding: 4px 14px; }

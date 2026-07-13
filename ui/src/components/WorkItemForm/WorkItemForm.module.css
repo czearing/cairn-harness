@@ -1,0 +1,7 @@
+.form { display: grid; gap: 10px; }
+.form label { font-size: 12px; font-weight: 570; }
+.form textarea { resize: vertical; min-height: 108px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 11px; background: var(--canvas); color: var(--text); line-height: 1.5; }
+.form textarea::placeholder { color: var(--text-subtle); }
+.form p { margin: 0; color: var(--danger); font-size: 11px; }
+.form button { justify-self: end; display: inline-flex; align-items: center; gap: 7px; min-height: 32px; border: 1px solid var(--border-strong); border-radius: 6px; padding: 0 11px; background: var(--surface-2); color: var(--text); font-size: 12px; cursor: pointer; }
+.form button:disabled { opacity: .4; cursor: default; }

@@ -1,0 +1,13 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 560;
+  text-transform: capitalize;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-subtle); }
+.active .dot { background: var(--accent); box-shadow: 0 0 10px rgb(158 240 192 / 45%); }
+.danger .dot { background: var(--danger); }
+.idle .dot { background: #6c727c; }
