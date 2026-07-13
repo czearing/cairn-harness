@@ -11,6 +11,7 @@ export function startAllProjects() {
 }
 
 export function ensureProjectRunning(projectId: string) {
+  if (process.env.HARNESS_DISABLE_SUPERVISOR === "1") return false;
   const config = getProjectConfigPath(projectId);
   if (!config) return false;
   const project = getProjects().find((candidate) => candidate.id === projectId);

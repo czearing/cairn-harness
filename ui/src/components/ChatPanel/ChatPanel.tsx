@@ -3,6 +3,7 @@
 import { useEffect, useRef, type CSSProperties } from "react";
 import type { Agent, ChatMessage } from "@/lib/types";
 import { agentColor } from "@/lib/colors";
+import { MessageBody } from "../MessageBody/MessageBody";
 import { MessageComposer } from "../MessageComposer/MessageComposer";
 import { StatusPill } from "../StatusPill/StatusPill";
 import styles from "./ChatPanel.module.css";
@@ -46,7 +47,7 @@ function Bubble({ message, agent, colors, focused }: { message: ChatMessage; age
         <span>{message.title || `to ${message.recipient === agent ? agent : message.recipient}`}</span>
         <time>{formatTime(message.timestamp)}</time>
       </div>
-      <p>{message.body}</p>
+      <MessageBody message={message} />
       <span className={styles.state}>{message.status}</span>
     </article>
   );

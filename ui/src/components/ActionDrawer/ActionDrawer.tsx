@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import styles from "./ActionDrawer.module.css";
 
-export function ActionDrawer({ title, open, onClose, children }: { title: string; open: boolean; onClose: () => void; children: ReactNode }) {
+export function ActionDrawer({ title, open, wide = false, onClose, children }: { title: string; open: boolean; wide?: boolean; onClose: () => void; children: ReactNode }) {
   const drawer = useRef<HTMLElement>(null);
   const previous = useRef<HTMLElement | null>(null);
 
@@ -33,7 +33,7 @@ export function ActionDrawer({ title, open, onClose, children }: { title: string
   }
   return createPortal(
     <div className={styles.backdrop} role="presentation" onMouseDown={onClose}>
-      <aside ref={drawer} className={styles.drawer} role="dialog" aria-modal="true" aria-label={title} onKeyDown={keyDown} onMouseDown={(event) => event.stopPropagation()}>
+      <aside ref={drawer} className={`${styles.drawer} ${wide ? styles.wide : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={keyDown} onMouseDown={(event) => event.stopPropagation()}>
         <header><h2>{title}</h2><button aria-label="Close" onClick={onClose}><X size={16} /></button></header>
         <div>{children}</div>
       </aside>

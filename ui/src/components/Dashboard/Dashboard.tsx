@@ -55,7 +55,7 @@ export function Dashboard({ initialProjects }: { initialProjects: Project[] }) {
       {project ? <ProjectView project={project} colors={colors} onAgent={(agent) => setChat({ agent })} onDocument={setDocument} onAddWork={() => setAddingWork(true)} /> : <EmptyState onCreate={() => setAddingProject(true)} />}
       {project && <ActivityRail project={project} onOpen={(agent, focusId) => setChat({ agent, focusId })} />}
 
-      <ActionDrawer title={chat ? `Conversation with ${chat.agent.id}` : ""} open={Boolean(chat)} onClose={() => setChat(undefined)}>
+      <ActionDrawer title={chat ? `Conversation with ${chat.agent.id}` : ""} open={Boolean(chat)} wide onClose={() => setChat(undefined)}>
         {chat && project && <ChatPanel agent={chat.agent} messages={project.conversations[chat.agent.id] || []} colors={colors} focusId={chat.focusId} onSend={(body) => post(`/api/projects/${project.id}/messages`, { agent: chat.agent.id, body }).then(() => undefined)} />}
       </ActionDrawer>
       <ActionDrawer title={document?.title || ""} open={Boolean(document)} onClose={() => setDocument(undefined)}>

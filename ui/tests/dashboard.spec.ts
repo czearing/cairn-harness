@@ -54,8 +54,14 @@ test("agent chat shows human and inter-agent history", async ({ page }) => {
   await expect(dialog.getByText("I survived the previous session.")).toBeVisible();
   await expect(dialog.getByText("I am checking the launch dependencies.")).toBeVisible();
   await expect(dialog.getByText("Tool: view")).toBeVisible();
+  await expect(dialog.getByText("Tool result: view")).toBeVisible();
   await expect(dialog.getByText("Session stopped").first()).toBeVisible();
   await expect(dialog.getByText("SYSTEM ROLE: private harness instructions")).toHaveCount(0);
+  await expect(dialog.getByText("PRIVATE CAIRN REASONING")).toHaveCount(0);
+  await expect(dialog.getByText("Readable agent summary.")).toBeVisible();
+  await expect(dialog.getByText("CAIRN_ENVELOPE_BEGIN")).toHaveCount(0);
+  await expect(dialog.getByRole("heading", { name: "Build notes" })).toBeVisible();
+  await expect(dialog.locator("details").first()).not.toHaveAttribute("open");
 });
 
 test("todo and activity rows open their full source context", async ({ page }) => {
@@ -141,6 +147,9 @@ test("opening a conversation lands on the latest message", async ({ page }) => {
   const history = page.getByLabel("Conversation history with lead");
   await expect.poll(() => history.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeLessThanOrEqual(1);
   expect(await history.evaluate((node) => getComputedStyle(node).scrollbarColor)).not.toBe("auto");
+  const drawer = page.getByRole("dialog", { name: "Conversation with lead" });
+  const width = await drawer.evaluate((node) => node.getBoundingClientRect().width);
+  if ((page.viewportSize()?.width || 0) > 720) expect(width).toBeGreaterThanOrEqual(600);
 });
 
 test("UI starts one project worker and mutations do not duplicate it", async ({ page }) => {

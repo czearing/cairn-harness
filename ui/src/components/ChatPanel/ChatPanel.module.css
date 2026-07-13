@@ -12,7 +12,7 @@
 .meta strong { color: var(--sender-color); font-size: 10px; }
 .meta span, .meta time, .state { color: var(--text-subtle); font: 9px var(--font-geist-mono); }
 .meta time { margin-left: auto; }
-.message p { margin: 0; white-space: pre-wrap; color: var(--text); font-size: 12px; line-height: 1.5; }
+.message p { color: var(--text); }
 .state { display: block; margin-top: 6px; text-transform: capitalize; }
 .composer { padding-top: 14px; border-top: 1px solid var(--border); }
 .empty { margin: auto; color: var(--text-subtle); font-size: 11px; }

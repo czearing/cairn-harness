@@ -39,9 +39,11 @@ writeFileSync(
   [
     { type: "session.start", timestamp: "2026-07-13T12:00:00Z", data: { sessionId: "s1" } },
     { type: "user.message", timestamp: "2026-07-13T12:00:05Z", data: { content: "SYSTEM ROLE: private harness instructions" } },
-    { type: "assistant.message", timestamp: "2026-07-13T12:00:10Z", data: { content: "I am checking the launch dependencies." } },
-    { type: "tool.execution_start", timestamp: "2026-07-13T12:00:20Z", data: { toolName: "view", arguments: { path: "launch.md" } } },
-    { type: "tool.execution_complete", timestamp: "2026-07-13T12:00:21Z", data: { toolName: "view", success: true } },
+    { type: "assistant.message", timestamp: "2026-07-13T12:00:10Z", data: { reasoningText: "PRIVATE CAIRN REASONING", content: "I am checking the launch dependencies." } },
+    { type: "assistant.message", timestamp: "2026-07-13T12:00:11Z", data: { content: "CAIRN_ENVELOPE_BEGIN\n{\"summary\":\"Readable agent summary.\",\"deliverable\":null,\"messages\":[],\"complete\":true}\nCAIRN_ENVELOPE_END" } },
+    { type: "assistant.message", timestamp: "2026-07-13T12:00:12Z", data: { content: "## Build notes\n\n- Checked the launch path\n- Kept `mobile` support" } },
+    { type: "tool.execution_start", timestamp: "2026-07-13T12:00:20Z", data: { toolCallId: "tool-1", toolName: "view", arguments: { path: "launch.md" } } },
+    { type: "tool.execution_complete", timestamp: "2026-07-13T12:00:21Z", data: { toolCallId: "tool-1", success: true, result: { content: "{\"status\":\"complete\"}" } } },
     { type: "session.shutdown", timestamp: "2026-07-13T12:03:00Z", data: {} },
   ].map(JSON.stringify).join("\n"),
 );
