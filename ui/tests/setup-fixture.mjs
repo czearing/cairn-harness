@@ -1,10 +1,17 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 
 const directory = path.join(process.cwd(), ".e2e");
 rmSync(directory, { recursive: true, force: true });
+const worker = path.join(directory, process.platform === "win32" ? "fake-worker.exe" : "fake-worker");
+mkdirSync(directory, { recursive: true });
+const compile = spawnSync("rustc", ["tests/fake-worker.rs", "-o", worker], { stdio: "inherit" });
+if (compile.status !== 0) throw new Error("Could not compile the supervisor test worker");
 mkdirSync(path.join(directory, "workspace", ".cairn-harness"), { recursive: true });
+mkdirSync(path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "s0"), { recursive: true });
+mkdirSync(path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "s1"), { recursive: true });
 mkdirSync(path.join(directory, "workspace", "todos"), { recursive: true });
 mkdirSync(path.join(directory, "workspace", "work-items", "in-progress"), { recursive: true });
 writeFileSync(path.join(directory, "project.json"), JSON.stringify({
@@ -19,6 +26,24 @@ writeFileSync(path.join(directory, "project.json"), JSON.stringify({
 }));
 writeFileSync(path.join(directory, "workspace", "todos", "build.todo"), "to: builder\n\nBuild the launch page.");
 writeFileSync(path.join(directory, "workspace", "work-items", "in-progress", "launch.md"), "Prepare and ship the launch.");
+writeFileSync(
+  path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "s0", "events.jsonl"),
+  [
+    { type: "session.start", timestamp: "2026-07-12T12:00:00Z", data: { sessionId: "s0" } },
+    { type: "assistant.message", timestamp: "2026-07-12T12:00:10Z", data: { content: "I survived the previous session." } },
+    { type: "session.shutdown", timestamp: "2026-07-12T12:01:00Z", data: {} },
+  ].map(JSON.stringify).join("\n"),
+);
+writeFileSync(
+  path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "s1", "events.jsonl"),
+  [
+    { type: "session.start", timestamp: "2026-07-13T12:00:00Z", data: { sessionId: "s1" } },
+    { type: "assistant.message", timestamp: "2026-07-13T12:00:10Z", data: { content: "I am checking the launch dependencies." } },
+    { type: "tool.execution_start", timestamp: "2026-07-13T12:00:20Z", data: { toolName: "view", arguments: { path: "launch.md" } } },
+    { type: "tool.execution_complete", timestamp: "2026-07-13T12:00:21Z", data: { toolName: "view", success: true } },
+    { type: "session.shutdown", timestamp: "2026-07-13T12:03:00Z", data: {} },
+  ].map(JSON.stringify).join("\n"),
+);
 const db = new DatabaseSync(path.join(directory, "workspace", ".cairn-harness", "harness.db"));
 db.exec(`
   CREATE TABLE agents(agent_id TEXT PRIMARY KEY,role TEXT,session_id TEXT,status TEXT,current_topic TEXT,updated_at TEXT);
@@ -31,6 +56,7 @@ db.exec(`
   INSERT INTO agents VALUES('builder','Builder','s2','idle',NULL,'2026-07-13T12:00:00Z');
   INSERT INTO work_items VALUES('w1','work-items/in-progress/launch.md','in-progress','2026-07-13T12:00:00Z');
   INSERT INTO todo_files VALUES('todos/build.todo','2026-07-13T12:01:00Z');
+  INSERT INTO messages VALUES('m0','dashboard','lead','request','Start with the product accent.','pending','2026-07-13T12:01:00Z');
   INSERT INTO messages VALUES('m1','lead','builder','handoff','Build the launch page.','completed','2026-07-13T12:01:15Z');
   INSERT INTO messages VALUES('m2','builder','lead','question','Should the launch include mobile?','pending','2026-07-13T12:01:30Z');
   INSERT INTO turns VALUES(1,'lead','completed','{"summary":"Delegated launch work.","deliverable":"Launch plan attached."}','2026-07-13T12:02:00Z');

@@ -5,6 +5,7 @@ const fixture = path.join(process.cwd(), ".e2e", "project.json");
 
 export default defineConfig({
   testDir: "./tests",
+  globalTeardown: "./tests/cleanup-fixture.mjs",
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -24,6 +25,7 @@ export default defineConfig({
     env: {
       HARNESS_PROJECTS: fixture,
       HARNESS_PROJECT_ROOT: path.join(process.cwd(), ".e2e", "projects"),
+      HARNESS_BIN: path.join(process.cwd(), ".e2e", process.platform === "win32" ? "fake-worker.exe" : "fake-worker"),
     },
     timeout: 120000,
   },

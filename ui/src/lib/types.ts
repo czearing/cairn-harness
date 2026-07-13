@@ -33,6 +33,8 @@ export interface ChatMessage {
   status: string;
   timestamp: string;
   direction: "incoming" | "outgoing";
+  kind: "message" | "assistant" | "tool" | "session" | "turn";
+  title?: string;
 }
 
 export interface Project {

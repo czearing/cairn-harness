@@ -51,6 +51,10 @@ test("agent chat shows human and inter-agent history", async ({ page }) => {
   await expect(dialog.getByText("Delegated launch work.")).toBeVisible();
   await expect(dialog.getByText("Launch plan attached.")).toBeVisible();
   await expect(dialog.getByText("builder", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("I survived the previous session.")).toBeVisible();
+  await expect(dialog.getByText("I am checking the launch dependencies.")).toBeVisible();
+  await expect(dialog.getByText("Tool: view")).toBeVisible();
+  await expect(dialog.getByText("Session stopped").first()).toBeVisible();
 });
 
 test("todo and activity rows open their full source context", async ({ page }) => {
@@ -99,6 +103,48 @@ test("invalid duplicate agents keep project input visible", async ({ page }, tes
   await dialog.getByRole("button", { name: "Create project" }).click();
   await expect(dialog.getByRole("alert")).toHaveText("Agent names must be unique");
   await expect(dialog.getByLabel("Project name")).toHaveValue(name);
+});
+
+test("agent identity colors are customizable and persist", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const color = page.getByLabel("lead color");
+  await color.fill("#ff9900");
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByLabel("lead color")).toHaveValue("#ff9900");
+});
+
+test("chat uses accent for the user and stable identity colors for agents", async ({ page }) => {
+  await page.goto("/");
+  const lead = page.getByRole("button", { name: "Open conversation with lead" });
+  const builder = page.getByRole("button", { name: "Open conversation with builder" });
+  const [leadColor, builderColor] = await Promise.all([
+    lead.evaluate((node) => getComputedStyle(node).getPropertyValue("--agent-color")),
+    builder.evaluate((node) => getComputedStyle(node).getPropertyValue("--agent-color")),
+  ]);
+  expect(leadColor).not.toBe(builderColor);
+  await lead.click();
+  const dialog = page.getByRole("dialog", { name: "Conversation with lead" });
+  const user = dialog.locator("article", { hasText: "Start with the product accent." });
+  const agent = dialog.locator("article", { hasText: "I survived the previous session." });
+  await expect(user).toContainText("You");
+  expect(await user.evaluate((node) => getComputedStyle(node).alignSelf)).toBe("flex-end");
+  expect(await agent.evaluate((node) => getComputedStyle(node).alignSelf)).toBe("flex-start");
+});
+
+test("UI starts one project worker and mutations do not duplicate it", async ({ page }) => {
+  const fs = await import("node:fs");
+  const record = path.join(process.cwd(), ".e2e", "workspace", ".cairn-harness", "ui-worker.json");
+  await expect.poll(() => fs.existsSync(record)).toBe(true);
+  const first = JSON.parse(fs.readFileSync(record, "utf8")) as { pid: number };
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open conversation with lead" }).click();
+  const dialog = page.getByRole("dialog", { name: "Conversation with lead" });
+  await dialog.getByRole("textbox").fill("Keep the same worker.");
+  await dialog.getByRole("button", { name: "Send message" }).click();
+  await expect.poll(() => (JSON.parse(fs.readFileSync(record, "utf8")) as { pid: number }).pid).toBe(first.pid);
 });
 
 function messageCount(dbPath: string) {

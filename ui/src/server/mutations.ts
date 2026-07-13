@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { getProject, getProjectConfigPath } from "./projects";
+import { ensureProjectRunning } from "./supervisor";
 
 interface Role { name: string; description: string; prompt: string; }
 
@@ -12,6 +13,7 @@ export function sendMessage(projectId: string, agent: string, body: string) {
   db.prepare("INSERT INTO messages(id,sender,recipient,topic,body,status,created_at) VALUES(?,?,?,?,?,'pending',?)")
     .run(randomUUID(), "dashboard", agent, "dashboard-message", body, new Date().toISOString());
   db.close();
+  ensureProjectRunning(projectId);
 }
 
 export function createWorkItem(projectId: string, body: string) {
@@ -20,6 +22,7 @@ export function createWorkItem(projectId: string, body: string) {
   const directory = path.join(/*turbopackIgnore: true*/ project.root, workDir, "inbox");
   mkdirSync(directory, { recursive: true });
   writeFileSync(path.join(directory, `${Date.now()}-${randomUUID().slice(0, 8)}.md`), `${body.trim()}\n`);
+  ensureProjectRunning(projectId);
 }
 
 function addWorkDirectory(projectId: string) {
@@ -47,6 +50,7 @@ export function createProject(name: string, rolesText: string) {
   writeFileSync(path.join(directory, "project.json"), `${JSON.stringify({
     name: name.trim(), root: ".", leader: roles[0].name, work_dir: "work-items", roles,
   }, null, 2)}\n`);
+  ensureProjectRunning(id);
   return id;
 }
 

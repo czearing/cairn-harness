@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { Activity as ActivityIcon, Boxes, Layers3 } from "lucide-react";
 import type { Agent, Project, QueueItem } from "@/lib/types";
+import { agentColor } from "@/lib/colors";
+import { useAgentColors } from "@/lib/use-agent-colors";
 import { ActionDrawer } from "../ActionDrawer/ActionDrawer";
+import { AgentColorSettings } from "../AgentColorSettings/AgentColorSettings";
 import { ActivityRow } from "../ActivityRow/ActivityRow";
 import { AgentCard } from "../AgentCard/AgentCard";
 import { ChatPanel } from "../ChatPanel/ChatPanel";
@@ -27,6 +30,8 @@ export function Dashboard({ initialProjects }: { initialProjects: Project[] }) {
   const [document, setDocument] = useState<QueueItem>();
   const [addingWork, setAddingWork] = useState(false);
   const [addingProject, setAddingProject] = useState(false);
+  const [settings, setSettings] = useState(false);
+  const [colors, setColors] = useAgentColors();
   const project = useMemo(() => data.find((item) => item.id === selectedId) || data[0], [data, selectedId]);
 
   async function post(url: string, body: object) {
@@ -46,12 +51,12 @@ export function Dashboard({ initialProjects }: { initialProjects: Project[] }) {
 
   return (
     <div className={styles.shell} data-app-shell>
-      <ProjectSidebar projects={data} selected={project?.id} onSelect={setSelectedId} onNew={() => setAddingProject(true)} />
-      {project ? <ProjectView project={project} onAgent={(agent) => setChat({ agent })} onDocument={setDocument} onAddWork={() => setAddingWork(true)} /> : <EmptyState onCreate={() => setAddingProject(true)} />}
+      <ProjectSidebar projects={data} selected={project?.id} onSelect={setSelectedId} onNew={() => setAddingProject(true)} onSettings={() => setSettings(true)} />
+      {project ? <ProjectView project={project} colors={colors} onAgent={(agent) => setChat({ agent })} onDocument={setDocument} onAddWork={() => setAddingWork(true)} /> : <EmptyState onCreate={() => setAddingProject(true)} />}
       {project && <ActivityRail project={project} onOpen={(agent, focusId) => setChat({ agent, focusId })} />}
 
       <ActionDrawer title={chat ? `Conversation with ${chat.agent.id}` : ""} open={Boolean(chat)} onClose={() => setChat(undefined)}>
-        {chat && project && <ChatPanel agent={chat.agent} messages={project.conversations[chat.agent.id] || []} focusId={chat.focusId} onSend={(body) => post(`/api/projects/${project.id}/messages`, { agent: chat.agent.id, body }).then(() => undefined)} />}
+        {chat && project && <ChatPanel agent={chat.agent} messages={project.conversations[chat.agent.id] || []} colors={colors} focusId={chat.focusId} onSend={(body) => post(`/api/projects/${project.id}/messages`, { agent: chat.agent.id, body }).then(() => undefined)} />}
       </ActionDrawer>
       <ActionDrawer title={document?.title || ""} open={Boolean(document)} onClose={() => setDocument(undefined)}>
         {document && <DocumentPanel item={document} />}
@@ -62,18 +67,21 @@ export function Dashboard({ initialProjects }: { initialProjects: Project[] }) {
       <ActionDrawer title="New project" open={addingProject} onClose={() => setAddingProject(false)}>
         <NewProjectForm onCreate={createProject} />
       </ActionDrawer>
+      <ActionDrawer title="Settings" open={settings} onClose={() => setSettings(false)}>
+        {project && <AgentColorSettings agents={project.agents} colors={colors} onChange={setColors} />}
+      </ActionDrawer>
     </div>
   );
 }
 
-function ProjectView({ project, onAgent, onDocument, onAddWork }: {
-  project: Project; onAgent: (agent: Agent) => void; onDocument: (item: QueueItem) => void; onAddWork: () => void;
+function ProjectView({ project, colors, onAgent, onDocument, onAddWork }: {
+  project: Project; colors: Record<string, string>; onAgent: (agent: Agent) => void; onDocument: (item: QueueItem) => void; onAddWork: () => void;
 }) {
   const active = project.agents.filter((agent) => agent.status === "working").length;
   return <main className={styles.main}>
     <ProjectHeader name={project.name} root={shortPath(project.root)} active={active} releases={project.releases} onAdd={onAddWork} />
     <section className={styles.section}><div className={styles.sectionTitle}><h2>Agents</h2><span>{project.agents.length} configured</span></div>
-      <div className={styles.agents}>{project.agents.map((agent) => <AgentCard key={agent.id} agent={agent} onClick={() => onAgent(agent)} />)}</div>
+      <div className={styles.agents}>{project.agents.map((agent) => <AgentCard key={agent.id} agent={agent} color={agentColor(agent.id, colors)} onClick={() => onAgent(agent)} />)}</div>
     </section>
     <div className={styles.workGrid}>
       <Panel title="Work items" action={<Boxes size={14} />}>{project.workItems.length ? project.workItems.map((item) => <QueueRow key={item.id} item={item} onClick={() => onDocument(item)} />) : <Blank text="No active work items" />}</Panel>

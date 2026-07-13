@@ -1,11 +1,11 @@
-import { Plus } from "lucide-react";
+import { Plus, Settings } from "lucide-react";
 import type { Project } from "@/lib/types";
 import { ProjectNavItem } from "../ProjectNavItem/ProjectNavItem";
 import styles from "./ProjectSidebar.module.css";
 
-interface Props { projects: Project[]; selected?: string; onSelect: (id: string) => void; onNew: () => void; }
+interface Props { projects: Project[]; selected?: string; onSelect: (id: string) => void; onNew: () => void; onSettings: () => void; }
 
-export function ProjectSidebar({ projects, selected, onSelect, onNew }: Props) {
+export function ProjectSidebar({ projects, selected, onSelect, onNew, onSettings }: Props) {
   return (
     <aside className={styles.sidebar} aria-label="Project navigation">
       <div className={styles.brand}><span>H</span><strong>Harness</strong></div>
@@ -13,7 +13,7 @@ export function ProjectSidebar({ projects, selected, onSelect, onNew }: Props) {
       <nav>
         {projects.map((project) => <ProjectNavItem key={project.id} name={project.name} count={project.agents.length} active={project.id === selected} onClick={() => onSelect(project.id)} />)}
       </nav>
-      <div className={styles.footer}><span />Live local data</div>
+      <div className={styles.footer}><span />Live local data<button aria-label="Settings" onClick={onSettings}><Settings size={13} /></button></div>
     </aside>
   );
 }

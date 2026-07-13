@@ -1,10 +1,12 @@
 import type { Agent } from "@/lib/types";
+import type { CSSProperties } from "react";
 import { StatusPill } from "../StatusPill/StatusPill";
 import styles from "./AgentCard.module.css";
 
-export function AgentCard({ agent, onClick }: { agent: Agent; onClick?: () => void }) {
+export function AgentCard({ agent, color, onClick }: { agent: Agent; color?: string; onClick?: () => void }) {
+  const identity = { "--agent-color": color } as CSSProperties;
   return (
-    <button className={styles.card} onClick={onClick} aria-label={`Open conversation with ${agent.id}`}>
+    <button style={identity} className={styles.card} onClick={onClick} aria-label={`Open conversation with ${agent.id}`}>
       <div className={styles.top}>
         <span className={styles.avatar}>{agent.id.slice(0, 2).toUpperCase()}</span>
         <StatusPill status={agent.status} />

@@ -35,7 +35,7 @@ function readProject(configPath: string): Project | null {
   const workItems = safeAll(db, "SELECT id,path,status,created_at FROM work_items ORDER BY created_at DESC LIMIT 20").map((row) => queueItem(root, row));
   const todos = safeAll(db, "SELECT path,ingested_at FROM todo_files ORDER BY ingested_at DESC LIMIT 20").map((row) => todoItem(root, row));
   const releases = safeCount(db, "SELECT COUNT(*) count FROM releases");
-  const conversations = readConversations(db, agents);
+  const conversations = readConversations(db, root, agents);
   db.close();
   return { ...base, agents, activity, workItems, todos, conversations, releases };
 }

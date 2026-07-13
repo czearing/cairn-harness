@@ -15,7 +15,7 @@ const projects = [{
   todos: [{ id: "2", title: "lyrics.todo", meta: "todos/lyrics.todo", status: "delegated" }],
   activity: [{ id: 1, agent: "idea-manager", summary: "Documented EP direction.", status: "completed", completedAt: new Date().toISOString(), chatId: "turn:1" }],
   conversations: {
-    "idea-manager": [{ id: "turn:1", sender: "idea-manager", recipient: "team", body: "Documented EP direction.", status: "completed", timestamp: new Date().toISOString(), direction: "outgoing" as const }],
+    "idea-manager": [{ id: "turn:1", sender: "idea-manager", recipient: "team", body: "Documented EP direction.", status: "completed", timestamp: new Date().toISOString(), direction: "outgoing" as const, kind: "turn" as const }],
     lyricist: [],
     composer: [],
   },
