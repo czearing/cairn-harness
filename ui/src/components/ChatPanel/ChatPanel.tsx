@@ -29,6 +29,7 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
   const focusedTarget = useRef<string | undefined>(undefined);
   const firstIndex = 1_000_000 - olderCount;
   const focusIndex = focusId ? messages.findIndex((message) => message.id === focusId) : -1;
+  const hasMessages = messages.length > 0;
   useEffect(() => {
     if (!focusId || focusedTarget.current === focusId) return;
     if (focusIndex < 0) return;
@@ -40,16 +41,27 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
     return () => window.clearTimeout(timer);
   }, [firstIndex, focusId, focusIndex]);
   useEffect(() => {
-    if (focusId || didInitialScroll.current || !messages.length) return;
-    didInitialScroll.current = true;
-    const element = document.querySelector<HTMLElement>(`[aria-label="Conversation history with ${CSS.escape(agent.id)}"]`);
-    if (!element) return;
+    if (focusId || didInitialScroll.current || !hasMessages) return;
+    let frame = 0;
+    let observer: ResizeObserver | undefined;
+    let element: HTMLElement | undefined;
+    let release = () => undefined;
+    const attach = () => {
+      element = scroller.current instanceof HTMLElement ? scroller.current : undefined;
+      if (!element) {
+        frame = requestAnimationFrame(attach);
+        return;
+      }
+      didInitialScroll.current = true;
+      start(element);
+    };
+    const start = (history: HTMLElement) => {
     settlingInitialBottom.current = true;
     const pin = () => {
       list.current?.scrollToIndex({ index: "LAST", align: "end" });
-      element.scrollTop = element.scrollHeight;
+      history.scrollTop = history.scrollHeight;
     };
-    const observer = new ResizeObserver(() => {
+    observer = new ResizeObserver(() => {
       pin();
       if (!revealed.current) {
         revealed.current = true;
@@ -59,25 +71,32 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
       settleTimer.current = window.setTimeout(() => {
         settlingInitialBottom.current = false;
         reachedInitialBottom.current = true;
-        observer.disconnect();
+        observer?.disconnect();
       }, 300);
     });
-    observer.observe(element);
-    if (element.firstElementChild) observer.observe(element.firstElementChild);
-    const release = () => {
+    observer.observe(history);
+    if (history.firstElementChild) observer.observe(history.firstElementChild);
+    release = () => {
       if (!settlingInitialBottom.current) stickToBottom.current = false;
     };
-    element.addEventListener("wheel", release, { passive: true });
-    element.addEventListener("touchstart", release, { passive: true });
-    element.addEventListener("pointerdown", release, { passive: true });
+    history.addEventListener("wheel", release, { passive: true });
+    history.addEventListener("touchstart", release, { passive: true });
+    history.addEventListener("pointerdown", release, { passive: true });
     pin();
-    return () => {
-      observer.disconnect();
-      element.removeEventListener("wheel", release);
-      element.removeEventListener("touchstart", release);
-      element.removeEventListener("pointerdown", release);
+    revealTimer.current = window.setTimeout(() => {
+      revealed.current = true;
+      setSettled(true);
+    }, 250);
     };
-  }, [agent.id, firstIndex, focusId, messages.length]);
+    attach();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      element?.removeEventListener("wheel", release);
+      element?.removeEventListener("touchstart", release);
+      element?.removeEventListener("pointerdown", release);
+    };
+  }, [agent.id, focusId, hasMessages]);
   useEffect(() => () => {
     window.clearTimeout(revealTimer.current);
     window.clearTimeout(settleTimer.current);

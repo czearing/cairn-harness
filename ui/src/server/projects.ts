@@ -62,7 +62,7 @@ function readProject(configPath: string): Project | null {
     .map((item) => paused ? { ...item, status: "paused" } : item);
   const releases = safeCount(db, "SELECT COUNT(*) count FROM releases");
   const workItemCount = safeCount(db, "SELECT COUNT(*) count FROM work_items") + queuedWork.length;
-  const activeWorkCount = safeCount(db, "SELECT COUNT(*) count FROM work_items WHERE status NOT IN ('done','completed','released')") + queuedWork.length;
+  const activeWorkCount = safeCount(db, "SELECT COUNT(*) count FROM work_items WHERE status NOT IN ('done','completed','released','cancelled')") + queuedWork.length;
   db.close();
   return { ...base, agents, activity, workItems, todos, releases, workItemCount, activeWorkCount };
 }

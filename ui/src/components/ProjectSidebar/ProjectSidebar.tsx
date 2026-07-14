@@ -19,7 +19,7 @@ export function ProjectSidebar({ projects, colors = {}, avatars = {}, selected, 
       <div className={styles.brand}><span>H</span><strong>Harness</strong></div>
       <div className={styles.label}><span>Projects</span><button aria-label="New project" onClick={onNew}><Plus size={13} /></button></div>
       <nav>
-        {projects.map((project) => <ProjectNavItem key={project.id} name={project.name} avatar={avatars[project.id]} count={project.workItemCount ?? project.workItems.length} color={agentColor(project.id, colors)} paused={project.paused} inProgress={Boolean(project.activeWorkCount) && !project.paused} active={project.id === selected} onClick={() => onSelect(project.id)} onContextMenu={(event) => {
+        {projects.map((project) => <ProjectNavItem key={project.id} name={project.name} avatar={avatars[project.id]} count={project.paused ? 0 : project.activeWorkCount ?? project.workItems.filter((item) => !["done", "completed", "released", "cancelled"].includes(item.status)).length} color={agentColor(project.id, colors)} paused={project.paused} inProgress={Boolean(project.activeWorkCount) && !project.paused} active={project.id === selected} onClick={() => onSelect(project.id)} onContextMenu={(event) => {
           event.preventDefault();
           setMenu({ project, x: event.clientX, y: event.clientY });
         }} />)}
