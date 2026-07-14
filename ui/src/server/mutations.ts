@@ -28,6 +28,10 @@ export function createWorkItem(projectId: string, body: string) {
 export function saveDraft(projectId: string, id: string, body: string) {
   const project = requiredProject(projectId);
   const file = path.join(project.root, ".cairn-harness", "drafts", `${safeId(id)}.md`);
+  if (!body.trim()) {
+    rmSync(file, { force: true });
+    return;
+  }
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, `${body.trimEnd()}\n`);
 }

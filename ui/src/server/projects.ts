@@ -143,9 +143,11 @@ function readDrafts(root: string): QueueItem[] {
   if (!existsSync(directory)) return [];
   return readdirSync(directory)
     .filter((name) => name.endsWith(".md"))
-    .map((name) => {
+    .flatMap((name) => {
       const content = readContent(root, path.join(".cairn-harness", "drafts", name));
-      return { id: path.basename(name, ".md"), title: documentLabel(content), meta: name, status: "draft", content };
+      return content.trim()
+        ? [{ id: path.basename(name, ".md"), title: documentLabel(content), meta: name, status: "draft", content }]
+        : [];
     });
 }
 function readQueuedWork(root: string, workDir: string, leader: string): QueueItem[] {

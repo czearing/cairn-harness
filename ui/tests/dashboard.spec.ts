@@ -55,6 +55,14 @@ test("project lead adds a task", async ({ page }) => {
   expect(await queued.evaluate((node) => getComputedStyle(node).animationName)).not.toBe("none");
 });
 
+test("blank task drafts never enter the task list", async ({ page }) => {
+  await page.goto("/");
+  const before = await page.getByRole("button", { name: /Untitled draft.*draft/i }).count();
+  await page.getByRole("button", { name: "New task" }).click();
+  await page.getByRole("button", { name: "Close editor" }).click();
+  await expect(page.getByRole("button", { name: /Untitled draft.*draft/i })).toHaveCount(before);
+});
+
 test("a direct message wakes a paused project worker", async ({ page }) => {
   const fs = await import("node:fs");
   const record = path.join(process.cwd(), ".e2e", "workspace", ".cairn-harness", "ui-worker.json");
