@@ -252,6 +252,57 @@ test("agent menu dismisses with Escape and outside click", async ({ page }) => {
   await expect(page.getByRole("menu")).toHaveCount(0);
 });
 
+test("mobile task editor exposes its focused writing surface", async ({ page }, testInfo) => {
+  const fs = await import("node:fs");
+  const drafts = path.join(process.cwd(), ".e2e", "workspace", ".cairn-harness", "drafts");
+  const orderingDrafts = Array.from({ length: 8 }, (_, index) => path.join(drafts, `autofocus-${testInfo.project.name}-${index}.md`));
+  orderingDrafts.forEach((file, index) => fs.writeFileSync(file, `Earlier draft ${index + 1}.`));
+  const scenarios = [
+    { width: 320, height: 844, reducedMotion: false },
+    { width: 390, height: 844, reducedMotion: false },
+    { width: 390, height: 844, reducedMotion: true },
+    { width: 800, height: 844, reducedMotion: false },
+    { width: 1024, height: 900, reducedMotion: false },
+    { width: 1440, height: 900, reducedMotion: false },
+  ];
+  try {
+    for (const scenario of scenarios) {
+      await page.setViewportSize(scenario);
+      await page.emulateMedia({ reducedMotion: scenario.reducedMotion ? "reduce" : "no-preference" });
+      await page.goto("/");
+      await page.evaluate(() => {
+        const measured = window as typeof window & { __scrollPositions: number[] };
+        measured.__scrollPositions = [];
+        addEventListener("scroll", () => measured.__scrollPositions.push(scrollY), { once: false });
+      });
+      await page.getByRole("button", { name: "New task" }).click();
+      const editor = page.getByRole("textbox", { name: "Task document" });
+      await expect(editor).toBeFocused();
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      const geometry = await editor.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        const workspace = node.closest<HTMLElement>("[aria-label='Task editor']");
+        const measured = window as typeof window & { __scrollPositions: number[] };
+        return {
+          top: rect.top,
+          bottom: rect.bottom,
+          innerWidth,
+          position: workspace ? getComputedStyle(workspace).position : "",
+          visibleHeight: Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0)),
+          overflow: document.documentElement.scrollWidth - innerWidth,
+          scrollPositions: [...new Set(measured.__scrollPositions)],
+        };
+      });
+      expect(geometry.overflow).toBeLessThanOrEqual(0);
+      expect(geometry.scrollPositions.length).toBeLessThanOrEqual(1);
+      expect(geometry.visibleHeight, `${scenario.width}px editor visibility: ${JSON.stringify(geometry)}`).toBeGreaterThanOrEqual(120);
+      if (scenario.width > 800) expect(geometry.scrollPositions).toEqual([]);
+    }
+  } finally {
+    orderingDrafts.forEach((file) => fs.rmSync(file, { force: true }));
+  }
+});
+
 test("reduced motion disables active progress animations", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");

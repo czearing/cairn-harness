@@ -11,3 +11,6 @@
 .close { width: 30px; padding: 0 !important; }
 .error { margin: 10px 0 0; color: var(--danger); font-size: 11px; }
 @media (max-width: 720px) { .workspace > header { flex-wrap: wrap; } .workspace > header div { width: 100%; } }
+@media (max-width: 800px) { .workspace { scroll-margin-top: 8px; } }
+@media (min-width: 801px) { .workspace { position: fixed; right: 310px; bottom: 8px; left: 250px; z-index: 1; background: var(--surface-1); } }
+@media (min-width: 801px) and (max-width: 1050px) { .workspace { right: 30px; left: 230px; } }

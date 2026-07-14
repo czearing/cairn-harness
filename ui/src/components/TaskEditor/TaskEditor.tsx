@@ -15,7 +15,19 @@ export function TaskEditor({ initialMarkdown, status, draft, onBack, onSave, onS
   const [saveState, setSaveState] = useState(initialMarkdown ? "Saved" : "Draft");
   const [error, setError] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const workspace = useRef<HTMLElement>(null);
   useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const root = workspace.current;
+      const editor = root?.querySelector<HTMLElement>("[contenteditable='true']");
+      editor?.focus({ preventScroll: true });
+      if (window.matchMedia("(max-width: 800px)").matches) {
+        root?.scrollIntoView({ block: "start" });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
   async function save(markdown = content) {
     clearTimeout(timer.current);
     setSaveState("Saving");
@@ -43,7 +55,7 @@ export function TaskEditor({ initialMarkdown, status, draft, onBack, onSave, onS
     catch (cause) { setError(cause instanceof Error ? cause.message : "Could not send task"); }
   }
   return (
-    <section className={styles.workspace} aria-label="Task editor">
+    <section ref={workspace} className={styles.workspace} aria-label="Task editor">
       <header>
         <div><span>{draft ? "Draft" : status}</span><strong>{saveState}</strong></div>
         <button onClick={() => void save()}><Check size={14} />Save{draft ? " draft" : ""}</button>
@@ -51,7 +63,7 @@ export function TaskEditor({ initialMarkdown, status, draft, onBack, onSave, onS
         <button className={styles.close} onClick={() => void save().then((saved) => saved && onBack())} aria-label="Close editor"><X size={15} /></button>
       </header>
       {error && <p className={styles.error} role="alert">{error}</p>}
-      <MarkdownEditor initialMarkdown={initialMarkdown} onChange={changed} label="Task document" placeholder="Describe what should happen..." autoFocus />
+      <MarkdownEditor initialMarkdown={initialMarkdown} onChange={changed} label="Task document" placeholder="Describe what should happen..." />
     </section>
   );
 }
