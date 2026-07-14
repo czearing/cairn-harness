@@ -237,6 +237,30 @@ test("agent menu edits the configured prompt", async ({ page }) => {
   expect(config.roles.find((role) => role.name === "lead")?.prompt).toContain("verify every result");
 });
 
+test("agent menu dismisses with Escape and outside click", async ({ page }) => {
+  await page.goto("/");
+  const more = page.getByRole("button", { name: "More options for lead" });
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await expect(more).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(more).toBeFocused();
+  await more.click();
+  await page.getByRole("heading", { name: "Agents" }).click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+});
+
+test("reduced motion disables active progress animations", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  const project = page.getByRole("button", { name: /Persona test/ });
+  const task = page.getByRole("button", { name: /Prepare and ship the launch.*Working/ });
+  expect(await project.evaluate((node) => getComputedStyle(node).animationName)).toBe("none");
+  expect(await task.evaluate((node) => getComputedStyle(node).animationName)).toBe("none");
+});
+
 test("settings owns project colors but not agent identity", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Settings" }).click();
