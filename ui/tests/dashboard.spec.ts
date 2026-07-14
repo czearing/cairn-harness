@@ -16,6 +16,9 @@ test("operator sees project, agents, queues, and activity", async ({ page }) => 
   const builder = page.getByRole("button", { name: "Open conversation with builder" }).locator("..");
   await expect(builder.getByText("builder", { exact: true })).toHaveCount(1);
   await expect(builder.getByText("Should the launch include mobile?")).toBeVisible();
+  const delegation = page.getByRole("button", { name: /Build the launch page/ });
+  await expect(delegation).toContainText("Assigned to builder");
+  await expect(delegation).toContainText("For Prepare and ship the launch.");
   await expect(page.getByLabel("Project leader")).toHaveCount(1);
   await expect(page.getByLabel("Work producer")).toHaveCount(1);
   const results = await new AxeBuilder({ page }).analyze();
@@ -129,13 +132,20 @@ test("in-progress task opens its assignment in chat", async ({ page }) => {
   await expect(assignment).toBeFocused();
 });
 
+test("completed tasks stay in an expandable history", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: /Research the launch audience/ })).toHaveCount(0);
+  await page.getByText("Completed 1", { exact: true }).click();
+  await expect(page.getByRole("button", { name: /Research the launch audience.*done/ })).toBeVisible();
+});
+
 test("completed delegated todo leaves the active list", async ({ page }) => {
   const dbPath = path.join(process.cwd(), ".e2e", "workspace", ".cairn-harness", "harness.db");
   const db = new DatabaseSync(dbPath);
   db.prepare("UPDATE messages SET status='completed' WHERE id='mtodo'").run();
   db.close();
   await page.goto("/");
-  await expect(page.getByRole("button", { name: /Build the launch page.*delegated/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Build the launch page/ })).toHaveCount(0);
   const restore = new DatabaseSync(dbPath);
   restore.prepare("UPDATE messages SET status='pending' WHERE id='mtodo'").run();
   restore.close();

@@ -20,6 +20,7 @@ mkdirSync(path.join(directory, "workspace", ".cairn-harness", "copilot-home", "l
 mkdirSync(path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "s1"), { recursive: true });
 mkdirSync(path.join(directory, "workspace", "todos"), { recursive: true });
 mkdirSync(path.join(directory, "workspace", "work-items", "in-progress"), { recursive: true });
+mkdirSync(path.join(directory, "workspace", "work-items", "done"), { recursive: true });
 writeFileSync(path.join(directory, "project.json"), JSON.stringify({
   name: "Persona test",
   root: "workspace",
@@ -34,6 +35,7 @@ writeFileSync(path.join(directory, "project.json"), JSON.stringify({
 writeFileSync(path.join(directory, "workspace", "todos", "build.todo"), "to: builder\n\nBuild the launch page.");
 writeFileSync(path.join(directory, "workspace", ".cairn-harness", "drafts", "existing.md"), "Existing draft task.");
 writeFileSync(path.join(directory, "workspace", "work-items", "in-progress", "launch.md"), "Prepare and ship the launch.");
+writeFileSync(path.join(directory, "workspace", "work-items", "done", "research.md"), "Research the launch audience.");
 writeFileSync(
   path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "s0", "events.jsonl"),
   [
@@ -67,9 +69,11 @@ db.exec(`
   INSERT INTO agents VALUES('lead','Project lead','s1','working','roadmap','2026-07-13T12:00:00Z');
   INSERT INTO agents VALUES('builder','Builder','s2','idle',NULL,'2026-07-13T12:00:00Z');
   INSERT INTO work_items VALUES('w1','work-items/in-progress/launch.md','work-message','in-progress','2026-07-13T12:00:00Z');
+  INSERT INTO work_items VALUES('w2','work-items/done/research.md','done-message','done','2026-07-12T12:00:00Z');
   INSERT INTO todo_files VALUES('todos/build.todo','mtodo','2026-07-13T12:01:00Z');
   INSERT INTO messages VALUES('m0','dashboard','lead','request','Start with the product accent.','pending','2026-07-13T12:01:00Z');
   INSERT INTO messages VALUES('work-message','work-items','lead','work-item','Prepare and ship the launch.','pending','2026-07-13T12:00:00Z');
+  INSERT INTO messages VALUES('done-message','work-items','lead','work-item','Research the launch audience.','completed','2026-07-12T12:00:00Z');
   INSERT INTO messages VALUES('mtodo','todo-folder','builder','todos/build.todo','Build the launch page.','pending','2026-07-13T12:01:05Z');
   INSERT INTO messages VALUES('m1','lead','builder','handoff','Build the launch page.','completed','2026-07-13T12:01:15Z');
   INSERT INTO messages VALUES('m2','builder','lead','question','Should the launch include mobile?','pending','2026-07-13T12:01:30Z');

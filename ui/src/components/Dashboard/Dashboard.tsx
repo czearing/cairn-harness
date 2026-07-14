@@ -16,12 +16,13 @@ import { AgentPromptEditor } from "../AgentPromptEditor/AgentPromptEditor";
 import { ActivityRow } from "../ActivityRow/ActivityRow";
 import { AgentCard } from "../AgentCard/AgentCard";
 import { ConversationDrawer } from "../ConversationDrawer/ConversationDrawer";
+import { DelegatedTodoRow } from "../DelegatedTodoRow/DelegatedTodoRow";
 import { NewProjectForm } from "../NewProjectForm/NewProjectForm";
 import { Panel } from "../Panel/Panel";
 import { ProjectHeader } from "../ProjectHeader/ProjectHeader";
 import { ProjectColorSettings } from "../ProjectColorSettings/ProjectColorSettings";
 import { ProjectSidebar } from "../ProjectSidebar/ProjectSidebar";
-import { QueueRow } from "../QueueRow/QueueRow";
+import { TaskList } from "../TaskList/TaskList";
 import styles from "./Dashboard.module.css";
 
 const fetcher = (url: string) => fetch(url).then((response) => response.json());
@@ -142,8 +143,11 @@ function ProjectView({ project, colors, avatars, editor, promptEditor, onAgent, 
       {promptEditor}
     </section>
     <div className={styles.workGrid}>
-      <Panel title="Tasks" action={<Boxes size={14} />}>{project.drafts?.map((item) => <QueueRow key={item.id} item={item} onClick={() => onTask(item)} />)}{project.workItems.length ? project.workItems.map((item) => <QueueRow key={item.id} item={item} onClick={() => onTask(item)} />) : !project.drafts?.length && !editor && <Blank text="No active tasks" />}{editor}</Panel>
-      <Panel title="Delegated TODOs" action={<Layers3 size={14} />}>{project.todos.length ? project.todos.map((item) => <QueueRow key={item.id} item={item} onClick={() => onTodo(item)} />) : <Blank text="No delegated TODOs" />}</Panel>
+      <Panel title="Tasks" action={<Boxes size={14} />}><TaskList drafts={project.drafts || []} tasks={project.workItems} editor={editor} onOpen={onTask} /></Panel>
+      <Panel title="Delegated action plan" action={<Layers3 size={14} />}>{project.todos.length ? project.todos.map((item) => {
+        const agent = project.agents.find((value) => value.id === item.agentId);
+        return <DelegatedTodoRow key={item.id} item={item} agent={agent} color={agent ? agentColor(agent.id, colors) : undefined} avatar={item.agentId ? avatars[item.agentId] : undefined} onClick={() => onTodo(item)} />;
+      }) : <Blank text="No active delegations" />}</Panel>
     </div>
   </main>;
 }
