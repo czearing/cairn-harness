@@ -60,7 +60,13 @@ async fn synchronize(
     loop {
         tokio::select! {
             update = session.read_update() => {
-                update?;
+                if matches!(update?, SessionMessage::StopReason(_)) {
+                    signal.wait_after(start, "HARNESS_SESSION_READY")
+                        .await
+                        .map_err(agent_client_protocol::util::internal_error)?;
+                    cancel(session)?;
+                    return Ok(());
+                }
             }
             events = signal.wait_after(start, "HARNESS_SESSION_READY") => {
                 events.map_err(agent_client_protocol::util::internal_error)?;
@@ -82,7 +88,15 @@ async fn read_response(
         tokio::select! {
             update = session.read_update() => {
                 match update? {
-                    SessionMessage::StopReason(_) => {}
+                    SessionMessage::StopReason(_) => {
+                        let TurnEvents { text, tools: event_tools } =
+                            signal.wait_after(start, crate::protocol::END).await?;
+                        cancel(session)?;
+                        return Ok(AgentResponse {
+                            text: if text.is_empty() { output } else { text },
+                            tools: if event_tools.is_empty() { tools } else { event_tools },
+                        });
+                    }
                     SessionMessage::SessionMessage(dispatch) => {
                         MatchDispatch::new(dispatch)
                             .if_notification(async |notification: SessionNotification| {

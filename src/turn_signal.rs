@@ -52,12 +52,14 @@ impl TurnSignal {
     }
 
     pub async fn wait_after(&mut self, start: u64, marker: &str) -> Result<TurnEvents> {
-        while self.events.recv().await.is_some() {
+        loop {
             if let Some(events) = read_turn(&self.file, start, marker)? {
                 return Ok(events);
             }
+            if self.events.recv().await.is_none() {
+                anyhow::bail!("session event watcher stopped");
+            }
         }
-        anyhow::bail!("session event watcher stopped")
     }
 }
 
