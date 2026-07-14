@@ -18,11 +18,13 @@ interface Props {
 export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId, hasMore, loading, loadingMore, olderCount = 0, onLoadOlder, onSend }: Props) {
   const list = useRef<VirtuosoHandle>(null);
   const didInitialScroll = useRef(false);
+  const focusedTarget = useRef<string | undefined>(undefined);
   const firstIndex = 1_000_000 - olderCount;
   const focusIndex = focusId ? messages.findIndex((message) => message.id === focusId) : -1;
   useEffect(() => {
-    if (!focusId) return;
+    if (!focusId || focusedTarget.current === focusId) return;
     if (focusIndex < 0) return;
+    focusedTarget.current = focusId;
     list.current?.scrollToIndex({ index: focusIndex, align: "center" });
     const timer = window.setTimeout(() => {
       document.querySelector<HTMLElement>(`[data-chat-id="${CSS.escape(focusId)}"]`)?.focus({ preventScroll: true });

@@ -125,11 +125,22 @@ test("todo and activity rows open their full source context", async ({ page }) =
 
 test("in-progress task opens its assignment in chat", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: /Prepare and ship the launch.*in-progress/ }).click();
+  await page.getByRole("button", { name: /Prepare and ship the launch.*Working/ }).click();
   const chat = page.getByRole("dialog", { name: "Conversation with lead" });
   const assignment = chat.locator('[data-chat-id="message:work-message"]');
   await expect(assignment).toBeVisible();
   await expect(assignment).toBeFocused();
+  const history = page.getByLabel("Conversation history with lead");
+  for (let index = 0; index < 5; index++) {
+    await history.evaluate((node) => node.scrollTo({ top: 0 }));
+    await page.waitForTimeout(150);
+  }
+  await expect.poll(() => history.evaluate((node) => node.scrollTop)).toBe(0);
+  for (let index = 0; index < 3; index++) {
+    await history.evaluate((node) => node.scrollTo({ top: node.scrollHeight }));
+    await page.waitForTimeout(150);
+  }
+  await expect.poll(() => history.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeLessThanOrEqual(1);
 });
 
 test("completed tasks stay in an expandable history", async ({ page }) => {
