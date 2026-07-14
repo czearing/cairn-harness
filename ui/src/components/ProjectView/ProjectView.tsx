@@ -13,19 +13,19 @@ interface Props {
   editor?: React.ReactNode; promptEditor?: React.ReactNode;
   onAgent: (agent: Agent) => void; onPrefetch: (agent: Agent) => void;
   onAppearance: (agent: Agent) => void; onPrompt: (agent: Agent) => void;
-  onClearContext: (agent: Agent) => void; onDelete: (agent: Agent) => void;
+  onMakeLeader: (agent: Agent) => void; onClearContext: (agent: Agent) => void; onDelete: (agent: Agent) => void;
   onTask: (item: QueueItem) => void; onTaskCancel: (item: QueueItem) => Promise<void>;
   onTaskDelete: (item: QueueItem) => Promise<void>; onTodo: (item: QueueItem) => void;
   onTodoDelete: (item: QueueItem) => Promise<void>; onAddWork: () => void;
   onAddAgent: () => void;
 }
 
-export function ProjectView({ project, colors, avatars, editor, promptEditor, onAgent, onPrefetch, onAppearance, onPrompt, onClearContext, onDelete, onTask, onTaskCancel, onTaskDelete, onTodo, onTodoDelete, onAddWork, onAddAgent }: Props) {
+export function ProjectView({ project, colors, avatars, editor, promptEditor, onAgent, onPrefetch, onAppearance, onPrompt, onMakeLeader, onClearContext, onDelete, onTask, onTaskCancel, onTaskDelete, onTodo, onTodoDelete, onAddWork, onAddAgent }: Props) {
   const active = project.agents.filter((agent) => agent.status === "working").length;
   return <main className={styles.main}>
     <ProjectHeader name={project.name} root={shortPath(project.root)} active={active} releases={project.releases} onAdd={onAddWork} />
     <section className={styles.section}><div className={styles.sectionTitle}><h2>Agents</h2><div><span>{project.agents.length} configured</span><button onClick={onAddAgent}><UserPlus size={13} />New agent</button></div></div>
-      {project.agents.length ? <div className={styles.agents}>{project.agents.map((agent) => <AgentCard key={agent.id} agent={agent} color={agentColor(agent.id, colors)} avatar={avatars[agent.id]} onClick={() => onAgent(agent)} onPrefetch={() => onPrefetch(agent)} onAppearance={() => onAppearance(agent)} onPrompt={() => onPrompt(agent)} onClearContext={() => onClearContext(agent)} onDelete={() => onDelete(agent)} />)}</div> :
+      {project.agents.length ? <div className={styles.agents}>{project.agents.map((agent) => <AgentCard key={agent.id} agent={agent} color={agentColor(agent.id, colors)} avatar={avatars[agent.id]} onClick={() => onAgent(agent)} onPrefetch={() => onPrefetch(agent)} onAppearance={() => onAppearance(agent)} onPrompt={() => onPrompt(agent)} onMakeLeader={() => onMakeLeader(agent)} onClearContext={() => onClearContext(agent)} onDelete={() => onDelete(agent)} />)}</div> :
         <div className={styles.emptyAgents}><strong>Build your team</strong><span>Create your first agent to start working in this workspace.</span><button onClick={onAddAgent}><UserPlus size={14} />Create first agent</button></div>}
       {promptEditor}
     </section>

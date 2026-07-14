@@ -91,6 +91,15 @@ export function clearAgentContext(projectId: string, agentId: string) {
   restartProject(projectId);
 }
 
+export function setProjectLeader(projectId: string, agentId: string) {
+  const configPath = getProjectConfigPath(projectId);
+  if (!configPath) throw new Error("Project config not found");
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as { leader?: string; roles?: Role[] };
+  if (!(config.roles || []).some((role) => role.name === agentId)) throw new Error("Agent not found");
+  config.leader = agentId;
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+}
+
 export function saveDocument(projectId: string, relative: string, body: string) {
   const project = requiredProject(projectId);
   const root = path.resolve(project.root);

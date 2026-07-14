@@ -129,12 +129,16 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
         onPrefetch={(agent) => prefetchConversation(project.id, agent.id)}
         onAppearance={(agent) => setAppearanceId(agent.id)}
         onPrompt={(agent) => setPromptId(agent.id)}
+        onMakeLeader={async (agent) => {
+          await write(`/api/projects/${project.id}/agents/${agent.id}`, "PATCH", { action: "make-leader" });
+          await mutate();
+        }}
         onDelete={async (agent) => {
           await write(`/api/projects/${project.id}/agents/${agent.id}`, "DELETE");
           await mutate();
         }}
         onClearContext={async (agent) => {
-          await write(`/api/projects/${project.id}/agents/${agent.id}`, "PATCH");
+          await write(`/api/projects/${project.id}/agents/${agent.id}`, "PATCH", { action: "clear-context" });
           await mutate();
         }}
         onTask={(item) => item.status === "draft" ? setEditing({ kind: "draft", item }) : item.agentId && setChat({ agentId: item.agentId, focusId: item.chatId })}

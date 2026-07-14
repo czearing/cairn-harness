@@ -48,7 +48,7 @@ function readProject(configPath: string): Project | null {
   const runtimeAgents = new Map(safeAll(db, "SELECT agent_id,role,status,current_topic,updated_at FROM agents ORDER BY agent_id")
     .map((row) => [String(row.agent_id), dbAgent(row)]));
   const agents = config.roles
-    .map((role) => runtimeAgents.get(role.name) || roleAgent(role, config.leader, config.producer))
+    .map((role) => runtimeAgents.has(role.name) ? { ...runtimeAgents.get(role.name)!, role: role.description } : roleAgent(role, config.leader, config.producer))
     .map((agent) => withLatestMessage(db, { ...agent, prompt: config.roles.find((role) => role.name === agent.id)?.prompt, isLeader: agent.id === config.leader, isProducer: agent.id === config.producer }))
     .map((agent) => paused ? { ...agent, status: "paused" as const, topic: undefined } : agent)
     .sort(leaderFirst);
