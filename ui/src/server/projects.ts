@@ -51,7 +51,7 @@ function readProject(configPath: string): Project | null {
   const storedWork = safeAll(db, "SELECT id,path,message_id,status,created_at FROM work_items ORDER BY created_at DESC LIMIT 20").map((row) => queueItem(root, row, config.leader));
   const queuedWork = readQueuedWork(root, config.work_dir || "work-items", config.leader);
   const workItems = [...queuedWork, ...storedWork];
-  const todos = safeAll(db, `SELECT t.path,t.ingested_at,t.message_id,m.recipient,m.status message_status,
+  const todos = safeAll(db, `SELECT t.path,t.ingested_at,t.message_id,m.recipient,m.topic,m.status message_status,
     (SELECT w.path FROM work_items w WHERE w.created_at<=t.ingested_at ORDER BY w.created_at DESC LIMIT 1) parent_path
     FROM todo_files t JOIN messages m ON m.id=t.message_id
     WHERE m.status NOT IN ('completed','failed') ORDER BY t.ingested_at DESC LIMIT 20`).map((row) => todoItem(root, row));
@@ -125,13 +125,18 @@ function todoItem(root: string, row: Record<string, unknown>): QueueItem {
   const meta = String(row.path);
   const content = readContent(root, meta);
   const parent = row.parent_path ? documentLabel(readContent(root, String(row.parent_path))) : "";
-  return { id: meta, title: documentLabel(content), meta, status: String(row.message_status), content, context: parent ? `For ${parent}` : "Project delegation", agentId: row.recipient ? String(row.recipient) : undefined, chatId: row.message_id ? `message:${String(row.message_id)}` : undefined };
+  return { id: meta, title: actionLabel(String(row.topic || ""), content), meta, status: String(row.message_status), content, context: parent ? `For ${parent}` : "Project delegation", agentId: row.recipient ? String(row.recipient) : undefined, chatId: row.message_id ? `message:${String(row.message_id)}` : undefined };
 }
 function documentLabel(content: string) {
   const first = content.split("\n")
     .map((line) => line.replace(/^#+\s*/, "").trim())
     .find((line) => line && !/^[a-z_-]+:\s/i.test(line));
   return first?.slice(0, 80) || "Untitled task";
+}
+function actionLabel(topic: string, content: string) {
+  const words = /[/.]/.test(topic) ? "" : topic.replace(/[-_]+/g, " ").replace(/\b(todo|task)\b/g, "").trim();
+  if (words) return words.replace(/\b\w/g, (letter) => letter.toUpperCase()).slice(0, 56);
+  return documentLabel(content).split(/[.!?]/)[0].slice(0, 56);
 }
 function readDrafts(root: string): QueueItem[] {
   const directory = path.join(root, ".cairn-harness", "drafts");

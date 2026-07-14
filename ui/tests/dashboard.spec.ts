@@ -17,7 +17,7 @@ test("operator sees project, agents, queues, and activity", async ({ page }) => 
   await expect(builder.getByText("builder", { exact: true })).toHaveCount(1);
   await expect(builder.getByText("Should the launch include mobile?")).toBeVisible();
   const delegation = page.getByRole("button", { name: /Build the launch page/ });
-  await expect(delegation).toContainText("Assigned to builder");
+  await expect(delegation).toContainText("builder · pending");
   await expect(delegation).toContainText("For Prepare and ship the launch.");
   await expect(page.getByLabel("Project leader")).toHaveCount(1);
   await expect(page.getByLabel("Work producer")).toHaveCount(1);
@@ -135,8 +135,8 @@ test("in-progress task opens its assignment in chat", async ({ page }) => {
 test("completed tasks stay in an expandable history", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("button", { name: /Research the launch audience/ })).toHaveCount(0);
-  await page.getByText("Completed 1", { exact: true }).click();
-  await expect(page.getByRole("button", { name: /Research the launch audience.*done/ })).toBeVisible();
+  await page.getByText("1 completed task", { exact: true }).click();
+  await expect(page.getByRole("button", { name: /Research the launch audience.*Done/ })).toBeVisible();
 });
 
 test("completed delegated todo leaves the active list", async ({ page }) => {

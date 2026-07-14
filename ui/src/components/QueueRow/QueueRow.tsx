@@ -8,7 +8,13 @@ export function QueueRow({ item, onClick }: { item: QueueItem; onClick?: () => v
     <button className={`${styles.row} ${active ? styles.active : ""}`} onClick={onClick}>
       <CircleDot size={14} />
       <span className={styles.copy}><strong>{item.title}</strong>{item.context && <span>{item.context}</span>}</span>
-      <span className={styles.status}>{item.status}</span>
+      <span className={styles.status}>{statusLabel(item.status)}</span>
     </button>
   );
+}
+
+function statusLabel(status: string) {
+  if (status === "in-progress" || status === "in progress") return "Working";
+  if (status === "done" || status === "completed") return "Done";
+  return status;
 }

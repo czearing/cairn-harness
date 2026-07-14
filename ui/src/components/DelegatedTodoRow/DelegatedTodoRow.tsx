@@ -11,8 +11,7 @@ export function DelegatedTodoRow({ item, agent, color, avatar, onClick }: Props)
   return (
     <button style={identity} className={styles.row} onClick={onClick}>
       <span className={styles.avatar} style={avatar ? { backgroundImage: `url("${avatar}")` } : undefined}>{!avatar && name.slice(0, 2).toUpperCase()}</span>
-      <span className={styles.copy}><span>Assigned to <strong>{name}</strong></span><b>{item.title}</b><small>{item.context}</small></span>
-      <span className={styles.status}>{item.status}</span>
+      <span className={styles.copy}><span><strong>{name}</strong> · {item.status}</span><b>{item.title}</b><small>{item.context}</small></span>
     </button>
   );
 }

@@ -14,7 +14,7 @@ export function TaskList({ drafts, tasks, editor, onOpen }: Props) {
       {!drafts.length && !active.length && !editor && <div className={styles.empty}>No active tasks</div>}
       {editor}
       {completed.length > 0 && <details className={styles.completed}>
-        <summary>Completed <span>{completed.length}</span></summary>
+        <summary>{completed.length} completed {completed.length === 1 ? "task" : "tasks"}</summary>
         {completed.map((item) => <QueueRow key={item.id} item={item} onClick={() => onOpen(item)} />)}
       </details>}
     </div>
