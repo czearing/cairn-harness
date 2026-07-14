@@ -49,15 +49,17 @@ function eventMessages(event: SessionEvent, agent: string, sessionId: string, in
   const timestamp = eventTime(event.timestamp);
   switch (event.type) {
     case "assistant.message":
-      return data.content ? [item(sessionId, index, agent, "team", String(data.content), timestamp, "assistant", "Response")] : [];
+      return data.content && !String(data.content).includes("HARNESS_SESSION_READY")
+        ? [item(sessionId, index, agent, "team", String(data.content), timestamp, "assistant", "Response")]
+        : [];
     case "tool.execution_start": {
       const name = String(data.toolName || "tool");
       if (completed.has(String(data.toolCallId))) return [];
-      return [item(sessionId, index, agent, name, compact(data.arguments), timestamp, "tool", `Using ${toolLabel(name)}`)];
+      return [item(sessionId, index, agent, name, pretty(data.arguments), timestamp, "tool", `Using ${toolLabel(name)}`)];
     }
     case "tool.execution_complete": {
       const name = tools.get(String(data.toolCallId)) || "tool";
-      return [item(sessionId, index, agent, name, compact(toolResult(data.result, data.success)), timestamp, "tool", `Used ${toolLabel(name)}`)];
+      return [item(sessionId, index, agent, name, pretty(toolResult(data.result, data.success)), timestamp, "tool", `Used ${toolLabel(name)}`)];
     }
     case "session.start":
       return [item(sessionId, index, "system", agent, `Session ${String(data.sessionId || sessionId)} started`, timestamp, "session", "Session started")];
@@ -75,10 +77,6 @@ function item(sessionId: string, index: number, sender: string, recipient: strin
 function pretty(value: unknown) {
   if (typeof value === "string") return value;
   try { return JSON.stringify(value, null, 2); } catch { return String(value || ""); }
-}
-function compact(value: unknown) {
-  const body = pretty(value);
-  return body.length <= 1600 ? body : `${body.slice(0, 1600)}\n\nDetails truncated in chat.`;
 }
 function toolResult(result: unknown, success: unknown) {
   if (result && typeof result === "object" && "content" in result) {

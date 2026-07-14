@@ -40,7 +40,7 @@ export function ensureProjectRunning(projectId: string) {
 }
 
 function harnessInvocation(config: string) {
-  const args = ["--config", config, "run", "--idle-exit-ms", "5000"];
+  const args = ["--config", config, "watch"];
   if (process.env.HARNESS_BIN) {
     return { command: process.env.HARNESS_BIN, args };
   }

@@ -11,7 +11,7 @@ test("operator sees project, agents, queues, and activity", async ({ page }) => 
   await expect(page.getByText("Prepare and ship the launch.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /lead Delegated launch work/ })).toBeVisible();
   const project = page.getByRole("button", { name: /Persona test/ });
-  await expect(project.getByLabel(/\d+ work items/)).toBeVisible();
+  await expect(project.getByLabel(/\d+ tasks/)).toBeVisible();
   expect(await project.evaluate((node) => getComputedStyle(node).animationName)).not.toBe("none");
   const builder = page.getByRole("button", { name: "Open conversation with builder" }).locator("..");
   await expect(builder.getByText("builder", { exact: true })).toHaveCount(1);
@@ -28,7 +28,7 @@ test("operator sees project, agents, queues, and activity", async ({ page }) => 
   expect(metrics.ready).toBeLessThan(1500);
 });
 
-test("project lead adds a work item", async ({ page }) => {
+test("project lead adds a task", async ({ page }) => {
   await page.goto("/");
   const inbox = path.join(process.cwd(), ".e2e", "workspace", "work-items", "inbox");
   const drafts = path.join(process.cwd(), ".e2e", "workspace", ".cairn-harness", "drafts");
@@ -292,14 +292,32 @@ test("idle dashboard does not poll and opens chat immediately", async ({ page })
     if (request.method() === "GET" && url.includes("/messages?")) messages++;
   });
   await page.goto("/");
+  await page.waitForTimeout(500);
+  const projectBaseline = projects;
   await page.waitForTimeout(3500);
-  expect(projects).toBeLessThanOrEqual(1);
+  expect(projects).toBe(projectBaseline);
   const started = Date.now();
   await page.getByRole("button", { name: "Open conversation with lead" }).click();
   await expect(page.getByRole("dialog", { name: "Conversation with lead" })).toBeVisible();
   expect(Date.now() - started).toBeLessThan(500);
+  await page.waitForTimeout(500);
+  const messageBaseline = messages;
   await page.waitForTimeout(3500);
-  expect(messages).toBe(1);
+  expect(messages).toBe(messageBaseline);
+});
+
+test("local database changes update the UI without polling", async ({ page }) => {
+  const dbPath = path.join(process.cwd(), ".e2e", "workspace", ".cairn-harness", "harness.db");
+  await page.goto("/");
+  await page.waitForTimeout(200);
+  const db = new DatabaseSync(dbPath);
+  db.prepare("UPDATE agents SET status='failed' WHERE agent_id='builder'").run();
+  db.close();
+  const card = page.getByRole("button", { name: "Open conversation with builder" }).locator("..");
+  await expect(card.getByText("failed", { exact: true })).toBeVisible();
+  const restore = new DatabaseSync(dbPath);
+  restore.prepare("UPDATE agents SET status='idle' WHERE agent_id='builder'").run();
+  restore.close();
 });
 
 test("UI starts one project worker and mutations do not duplicate it", async ({ page }) => {

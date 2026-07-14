@@ -8,15 +8,15 @@ const fetcher = (url: string) => fetch(url).then((response) => {
   return response.json() as Promise<ConversationPage>;
 });
 
-export function useConversation(projectId: string, agentId: string, focusId?: string, watching = false) {
+export function useConversation(projectId: string, agentId: string, focusId?: string) {
   function getKey(page: number, previous?: ConversationPage) {
     if (page > 0 && !previous?.hasMore) return null;
     const query = new URLSearchParams({ agent: agentId });
+    if (page === 0 && focusId) query.set("focus", focusId);
     if (page > 0 && previous?.nextBefore) query.set("before", previous.nextBefore);
     return `/api/projects/${projectId}/messages?${query}`;
   }
   const { data, error, isLoading, isValidating, setSize, mutate } = useSWRInfinite(getKey, fetcher, {
-    refreshInterval: watching && !focusId ? 1500 : 0,
     revalidateFirstPage: true,
     revalidateAll: false,
   });

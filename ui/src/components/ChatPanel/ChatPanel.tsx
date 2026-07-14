@@ -68,12 +68,26 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
 
 function Bubble({ message, agent, colors, avatar, focused }: { message: ChatMessage; agent: string; colors: Record<string, string>; avatar?: string; focused: boolean }) {
   if (message.kind === "tool") return <ToolBubble message={message} focused={focused} />;
+  if (message.sender === "work-items" || message.sender === "todo-folder") {
+    return <AssignmentBubble message={message} focused={focused} />;
+  }
   const user = isUser(message);
   const sender = user ? "You" : message.sender;
   const identity = { "--sender-color": user ? "var(--accent)" : agentColor(message.sender, colors) } as CSSProperties;
   return (
     <article style={identity} tabIndex={-1} data-chat-id={message.id} className={`${styles.message} ${user ? styles.own : ""} ${message.kind !== "message" && message.kind !== "assistant" ? styles.event : ""} ${focused ? styles.focused : ""}`}>
       <div className={styles.meta}><span className={styles.avatar} style={avatar ? { backgroundImage: `url("${avatar}")` } : undefined}>{!avatar && sender.slice(0, 2).toUpperCase()}</span><strong>{sender}</strong><span>{message.title || `to ${message.recipient === agent ? agent : message.recipient}`}</span><time>{formatTime(message.timestamp)}</time></div>
+      <MessageBody message={message} />
+      <span className={styles.state}>{message.status}</span>
+    </article>
+  );
+}
+
+function AssignmentBubble({ message, focused }: { message: ChatMessage; focused: boolean }) {
+  const task = message.sender === "work-items";
+  return (
+    <article tabIndex={-1} data-chat-id={message.id} className={`${styles.assignment} ${focused ? styles.focused : ""}`}>
+      <div><strong>{task ? "Task assigned" : "Delegated task"}</strong><span>to {message.recipient}</span><time>{formatTime(message.timestamp)}</time></div>
       <MessageBody message={message} />
       <span className={styles.state}>{message.status}</span>
     </article>

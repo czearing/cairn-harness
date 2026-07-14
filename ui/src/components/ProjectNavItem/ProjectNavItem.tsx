@@ -10,7 +10,7 @@ export function ProjectNavItem({ name, count, color, active, inProgress, onClick
     <button style={identity} className={`${styles.item} ${active ? styles.active : ""} ${inProgress ? styles.progress : ""}`} onClick={onClick}>
       <span className={styles.mark}>{name.slice(0, 1).toUpperCase()}</span>
       <span className={styles.name}>{name}</span>
-      <span className={styles.count} aria-label={`${count} work items`}>{count}</span>
+      <span className={styles.count} aria-label={`${count} tasks`}>{count}</span>
       <ChevronRight size={14} />
     </button>
   );

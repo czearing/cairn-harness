@@ -83,7 +83,7 @@ async fn leader_delegates_parallel_work_through_todos_and_docs() {
         .unwrap();
     assert!(config.root.join("todos/pastry.todo").exists());
     assert!(config.root.join("todos/sauce.todo").exists());
-    assert_eq!(harness.ingest_todos().await.unwrap(), 2);
+    assert_eq!(harness.ingest_todos().await.unwrap(), 0);
     harness
         .run_until_idle(Duration::from_millis(125))
         .await

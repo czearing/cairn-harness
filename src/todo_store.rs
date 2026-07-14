@@ -9,6 +9,7 @@ impl Store {
         &self,
         path: &str,
         content_hash: &str,
+        parent: Option<&str>,
         recipient: &str,
         topic: &str,
         body: &str,
@@ -22,7 +23,15 @@ impl Store {
             return Ok(false);
         }
         let mut transaction = self.pool.begin().await?;
-        let message_id = Uuid::new_v4().to_string();
+        let active: Option<(String,)> = sqlx::query_as(
+            "SELECT message_id FROM work_items WHERE status='in-progress' ORDER BY created_at DESC LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        let parent = parent.or_else(|| active.as_ref().map(|row| row.0.as_str()));
+        let message_id = parent
+            .map(|value| format!("{value}:todo:{content_hash}"))
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         let now = Utc::now().to_rfc3339();
         sqlx::query(
             "INSERT INTO messages(id,sender,recipient,topic,body,status,created_at)

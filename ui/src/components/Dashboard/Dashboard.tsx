@@ -9,6 +9,7 @@ import { agentColor } from "@/lib/colors";
 import { useAgentColors } from "@/lib/use-agent-colors";
 import { useStoredRecord } from "@/lib/use-stored-record";
 import { useSelectedProject } from "@/lib/use-selected-project";
+import { useProjectEvents } from "@/lib/use-project-events";
 import { ActionDrawer } from "../ActionDrawer/ActionDrawer";
 import { AgentIdentityEditor } from "../AgentIdentityEditor/AgentIdentityEditor";
 import { AgentPromptEditor } from "../AgentPromptEditor/AgentPromptEditor";
@@ -47,6 +48,7 @@ export function Dashboard({ initialProjects }: { initialProjects: Project[] }) {
   const chatAgent = project?.agents.find((agent) => agent.id === chat?.agentId);
   const appearanceAgent = project?.agents.find((agent) => agent.id === appearanceId);
   const promptAgent = project?.agents.find((agent) => agent.id === promptId);
+  useProjectEvents(() => void mutate());
 
   async function post(url: string, body: object) {
     const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });

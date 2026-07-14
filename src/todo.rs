@@ -25,7 +25,14 @@ pub async fn ingest(config: &ProjectConfig, store: &Store, leader: &str) -> Resu
         }
         let hash = blake3::hash(content.as_bytes()).to_hex().to_string();
         if store
-            .ingest_todo(&relative, &hash, &todo.to, &todo.topic, &todo.body)
+            .ingest_todo(
+                &relative,
+                &hash,
+                todo.parent.as_deref(),
+                &todo.to,
+                &todo.topic,
+                &todo.body,
+            )
             .await?
         {
             count += 1;
@@ -63,6 +70,7 @@ fn relative(config: &ProjectConfig, path: &Path) -> String {
 }
 
 struct Todo {
+    parent: Option<String>,
     to: String,
     topic: String,
     body: String,
@@ -70,12 +78,16 @@ struct Todo {
 
 fn parse(content: &str, leader: &str, path: &str) -> Todo {
     let normalized = content.replace("\r\n", "\n");
+    let mut parent = None;
     let mut to = leader.to_string();
     let mut topic = path.to_string();
     let mut body_start = 0;
     for line in normalized.lines() {
         let consumed = line.len() + 1;
-        if let Some(value) = line.strip_prefix("to:") {
+        if let Some(value) = line.strip_prefix("parent:") {
+            parent = Some(value.trim().to_string());
+            body_start += consumed;
+        } else if let Some(value) = line.strip_prefix("to:") {
             to = value.trim().to_string();
             body_start += consumed;
         } else if let Some(value) = line.strip_prefix("topic:") {
@@ -89,6 +101,7 @@ fn parse(content: &str, leader: &str, path: &str) -> Todo {
         }
     }
     Todo {
+        parent,
         to,
         topic,
         body: normalized[body_start.min(normalized.len())..]

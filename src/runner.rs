@@ -7,7 +7,6 @@ use crate::{
     shell_command,
 };
 use anyhow::{Context, Result, bail};
-use tokio::time::{Duration, timeout};
 
 pub trait AgentRunner: Send + Sync {
     fn warm<'a>(
@@ -56,9 +55,9 @@ impl CopilotRunner {
         if let Some(path) = &self.config.additional_mcp_config {
             command.arg("--additional-mcp-config").arg(path);
         }
-        let output = timeout(Duration::from_secs(10), command.output())
+        let output = command
+            .output()
             .await
-            .context("Copilot timed out after 10 seconds")?
             .with_context(|| format!("failed to run Copilot for agent {}", request.worker.id))?;
         if !output.status.success() {
             bail!(

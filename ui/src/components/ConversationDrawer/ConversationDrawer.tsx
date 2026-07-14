@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import type { Agent } from "@/lib/types";
 import { useConversation } from "@/lib/use-conversation";
+import { useProjectEvents } from "@/lib/use-project-events";
 import { ChatPanel } from "../ChatPanel/ChatPanel";
 
 interface Props {
@@ -15,14 +15,8 @@ interface Props {
 }
 
 export function ConversationDrawer({ projectId, agent, colors, avatars, focusId, onProjectMutate }: Props) {
-  const [watching, setWatching] = useState(false);
-  const watchStart = useRef("");
-  const conversation = useConversation(projectId, agent.id, focusId, watching);
-  useEffect(() => {
-    if (!watching || !watchStart.current) return;
-    const replied = conversation.messages.some((message) => message.timestamp > watchStart.current && message.sender !== "dashboard" && message.sender !== "human");
-    if (replied) setWatching(false);
-  }, [conversation.messages, watching]);
+  const conversation = useConversation(projectId, agent.id, focusId);
+  useProjectEvents(() => void conversation.mutate());
   async function send(body: string) {
     const response = await fetch(`/api/projects/${projectId}/messages`, {
       method: "POST",
@@ -33,8 +27,6 @@ export function ConversationDrawer({ projectId, agent, colors, avatars, focusId,
       const data = await response.json().catch(() => ({ error: "Message failed" })) as { error?: string };
       throw new Error(data.error || "Message failed");
     }
-    watchStart.current = new Date().toISOString();
-    setWatching(true);
     await Promise.all([conversation.mutate(), onProjectMutate()]);
   }
   return <ChatPanel

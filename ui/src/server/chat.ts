@@ -8,7 +8,7 @@ export function readConversationPage(db: DatabaseSync, root: string, agent: Agen
     const focus = all.findIndex((message) => message.id === focusId);
     if (focus >= 0) {
       const start = Math.max(0, focus - Math.floor(limit / 2));
-      const items = all.slice(start, start + limit);
+      const items = all.slice(start);
       return { items, hasMore: start > 0, nextBefore: items[0] ? cursor(items[0]) : undefined };
     }
   }

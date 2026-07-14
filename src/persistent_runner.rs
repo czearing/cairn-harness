@@ -2,7 +2,6 @@ use std::{collections::HashMap, future::Future, path::PathBuf, pin::Pin};
 
 use anyhow::{Context, Result};
 use tokio::sync::{Mutex, mpsc, oneshot};
-use tokio::time::{Duration, timeout};
 
 use crate::{
     acp_process,
@@ -57,9 +56,8 @@ impl PersistentCopilotRunner {
                 tracing::error!(agent = %worker_id, %error, "persistent Copilot agent stopped");
             }
         });
-        let session_id = timeout(Duration::from_secs(60), ready_rx)
+        let session_id = ready_rx
             .await
-            .context("Copilot ACP startup timed out")?
             .context("Copilot ACP startup channel closed")??;
         let handle = AgentHandle { jobs, session_id };
         agents.insert(worker.id, handle.clone());
@@ -92,9 +90,8 @@ async fn send_job(handle: &AgentHandle, prompt: String) -> Result<AgentOutput> {
         .send(Job { prompt, response })
         .await
         .context("persistent Copilot agent stopped")?;
-    timeout(Duration::from_secs(75), result)
+    result
         .await
-        .context("Copilot response timed out after 75 seconds")?
         .context("persistent Copilot response channel closed")?
 }
 

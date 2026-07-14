@@ -24,3 +24,8 @@
 .tool span, .tool time { font: 8px var(--font-geist-mono); text-transform: uppercase; letter-spacing: .05em; }
 .tool strong { color: var(--text-muted); font-size: 10px; font-weight: 560; }
 .tool time { margin-left: auto; text-transform: none; letter-spacing: 0; }
+.assignment { width: 100%; padding: 10px 11px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--surface-2); }
+.assignment > div { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.assignment strong { font-size: 11px; }
+.assignment div span, .assignment time { color: var(--text-subtle); font: 9px var(--font-geist-mono); }
+.assignment time { margin-left: auto; }

@@ -10,7 +10,6 @@ interface Role { name: string; description: string; prompt: string; }
 export function sendMessage(projectId: string, agent: string, body: string) {
   const project = requiredProject(projectId);
   const db = new DatabaseSync(path.join(/*turbopackIgnore: true*/ project.root, ".cairn-harness", "harness.db"));
-  db.exec("PRAGMA busy_timeout=5000");
   db.prepare("INSERT INTO messages(id,sender,recipient,topic,body,status,created_at) VALUES(?,?,?,?,?,'pending',?)")
     .run(randomUUID(), "dashboard", agent, "dashboard-message", body, new Date().toISOString());
   db.close();

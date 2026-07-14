@@ -26,7 +26,6 @@ export function getConversation(projectId: string, agentId: string, before?: str
   const dbPath = path.join(project.root, ".cairn-harness", "harness.db");
   if (!existsSync(dbPath)) return { items: [], hasMore: false };
   const db = new DatabaseSync(dbPath, { readOnly: true });
-  db.exec("PRAGMA busy_timeout=5000");
   const page = readConversationPage(db, project.root, agent, before, focusId, limit);
   db.close();
   return page;
@@ -45,7 +44,6 @@ function readProject(configPath: string): Project | null {
   const dbPath = path.join(root, ".cairn-harness", "harness.db");
   if (!existsSync(dbPath)) return base;
   const db = new DatabaseSync(dbPath, { readOnly: true });
-  db.exec("PRAGMA busy_timeout=5000");
   const agents = safeAll(db, "SELECT agent_id,role,status,current_topic,updated_at FROM agents ORDER BY agent_id")
     .map((row) => withLatestMessage(db, { ...dbAgent(row), prompt: config.roles.find((role) => role.name === row.agent_id)?.prompt, isLeader: row.agent_id === config.leader, isProducer: row.agent_id === config.producer }))
     .sort(leaderFirst);

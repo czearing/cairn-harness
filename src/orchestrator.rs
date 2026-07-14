@@ -148,21 +148,19 @@ impl Harness {
                 shutdown: shutdown_rx.clone(),
             }));
         }
-        wait_for_idle(&self.store, &active, idle_for, &mut tasks).await?;
+        wait_for_idle(self, &active, idle_for, &mut tasks).await?;
         shutdown_tx.send(true)?;
         while let Some(result) = tasks.join_next().await {
             result??;
         }
         Ok(())
     }
-
     pub fn store(&self) -> &Store {
         &self.store
     }
 }
-
 async fn wait_for_idle(
-    store: &Store,
+    harness: &Harness,
     active: &AtomicUsize,
     idle_for: Duration,
     tasks: &mut JoinSet<Result<()>>,
@@ -181,7 +179,11 @@ async fn wait_for_idle(
                 }
             }
             _ = sleep(tick) => {
-                if store.open_message_count().await? == 0
+                if harness.ingest_todos().await? + harness.ingest_work().await? > 0 {
+                    idle = Duration::ZERO;
+                    continue;
+                }
+                if harness.store.open_message_count().await? == 0
                     && active.load(Ordering::SeqCst) == 0
                 {
                     idle += tick;

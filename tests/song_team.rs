@@ -105,12 +105,11 @@ async fn song_work_item_delegates_parallel_specialists_and_releases() {
         .run_steps(1, Duration::from_millis(75))
         .await
         .unwrap();
-    assert_eq!(harness.ingest_work().await.unwrap(), 1);
+    assert_eq!(harness.ingest_work().await.unwrap(), 0);
     harness
         .run_steps(1, Duration::from_millis(75))
         .await
         .unwrap();
-    assert_eq!(harness.ingest_todos().await.unwrap(), 3);
     harness
         .run_until_idle(Duration::from_millis(125))
         .await

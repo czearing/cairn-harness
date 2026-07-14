@@ -37,7 +37,8 @@ pub fn build(
     if worker.id == config.leader() && message.topic == "work-item" {
         writeln!(
             prompt,
-            "Lead through the team. Delegate meaningful specialist portions to relevant teammates by default, then synthesize their results. Work alone only when no teammate role is relevant."
+            "Lead through the team. Delegate meaningful specialist portions to relevant teammates by default, then synthesize their results. Work alone only when no teammate role is relevant. Start each TODO file for this task with `parent: {}`.",
+            message.id
         )
         .unwrap();
     }
