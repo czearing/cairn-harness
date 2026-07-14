@@ -62,7 +62,7 @@ async fn synchronize(
             update = session.read_update() => {
                 update?;
             }
-            events = signal.wait_after(start) => {
+            events = signal.wait_after(start, "HARNESS_SESSION_READY") => {
                 events.map_err(agent_client_protocol::util::internal_error)?;
                 cancel(session)?;
                 return Ok(());
@@ -101,7 +101,7 @@ async fn read_response(
                     _ => {}
                 }
             }
-            events = signal.wait_after(start) => {
+            events = signal.wait_after(start, crate::protocol::END) => {
                 let TurnEvents { text, tools: event_tools } = events?;
                 cancel(session)?;
                 return Ok(AgentResponse {
