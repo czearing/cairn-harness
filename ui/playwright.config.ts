@@ -28,6 +28,7 @@ export default defineConfig({
       HARNESS_PROJECT_ROOT: path.join(process.cwd(), ".e2e", "projects"),
       HARNESS_DISCOVER_EXAMPLES: "0",
       HARNESS_DISABLE_AUTOSTART: "1",
+      HARNESS_ENABLE_SUPERVISOR: "1",
       HARNESS_BIN: path.join(process.cwd(), ".e2e", process.platform === "win32" ? "fake-worker.exe" : "fake-worker"),
     },
     timeout: 120000,

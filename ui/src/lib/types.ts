@@ -1,4 +1,4 @@
-export type AgentStatus = "idle" | "working" | "failed" | "budget-exhausted";
+export type AgentStatus = "idle" | "working" | "paused" | "failed" | "budget-exhausted";
 
 export interface Agent {
   id: string;
@@ -51,6 +51,9 @@ export interface ConversationPage {
   nextBefore?: string;
 }
 
+export interface HealthIssue { projectId: string; projectName: string; summary: string; transcript: string; }
+export interface HealthState { status: "healthy" | "paused" | "attention"; label: string; issues: HealthIssue[]; }
+
 export interface Project {
   id: string;
   name: string;
@@ -61,6 +64,7 @@ export interface Project {
   activity: Activity[];
   conversations?: Record<string, ChatMessage[]>;
   workDir?: string;
+  paused?: boolean;
   releases: number;
   workItemCount?: number;
   activeWorkCount?: number;

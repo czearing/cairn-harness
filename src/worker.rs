@@ -82,6 +82,23 @@ async fn process(ctx: &WorkerContext, message: Message) -> Result<()> {
     let result = run_with_lease(ctx, &message.id, request).await;
     drop(permit);
     let completed_at = Utc::now().to_rfc3339();
+    if ctx.store.is_cancelled(&message.id).await? {
+        if let Ok(output) = &result {
+            turn::record(
+                ctx,
+                &message,
+                &session_id,
+                &prompt,
+                output,
+                "cancelled",
+                &started_at,
+                &completed_at,
+            )
+            .await?;
+        }
+        ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
+        return Ok(());
+    }
     match result {
         Ok(output) if output.is_actionable() => {
             turn::record(
@@ -102,6 +119,21 @@ async fn process(ctx: &WorkerContext, message: Message) -> Result<()> {
             if output.messages.is_empty() && (ctx.worker.id == ctx.config.leader() || released) {
                 crate::work_item::complete(&ctx.config, &ctx.store, &message.id).await?;
             }
+            ctx.store.finish(&message.id, "completed", None).await?;
+            ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
+        }
+        Ok(output) if output.is_waiting() => {
+            turn::record(
+                ctx,
+                &message,
+                &session_id,
+                &prompt,
+                &output,
+                "waiting",
+                &started_at,
+                &completed_at,
+            )
+            .await?;
             ctx.store.finish(&message.id, "completed", None).await?;
             ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
         }

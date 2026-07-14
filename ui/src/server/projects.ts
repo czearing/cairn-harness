@@ -19,7 +19,7 @@ export function getProjectConfigPath(id: string) {
   return configPaths().find((candidate) => path.basename(path.dirname(candidate)) === id);
 }
 
-export function getConversation(projectId: string, agentId: string, before?: string, focusId?: string, limit = 80): ConversationPage | null {
+export function getConversation(projectId: string, agentId: string, before?: string, focusId?: string, limit = 30): ConversationPage | null {
   const project = getProject(projectId);
   const agent = project?.agents.find((candidate) => candidate.id === agentId);
   if (!project || !agent) return null;
@@ -35,8 +35,9 @@ function readProject(configPath: string): Project | null {
   const config = JSON.parse(readFileSync(configPath, "utf8")) as Config;
   const root = path.resolve(path.dirname(configPath), config.root);
   const id = path.basename(path.dirname(configPath));
+  const paused = existsSync(path.join(path.dirname(configPath), ".cairn-paused"));
   const base: Project = {
-    id, name: config.name, root, workDir: config.work_dir,
+    id, name: config.name, root, workDir: config.work_dir, paused,
     agents: config.roles.map((role) => roleAgent(role, config.leader, config.producer)).sort(leaderFirst), workItems: [], todos: [],
     activity: [], releases: 0, workItemCount: 0, activeWorkCount: 0,
     drafts: readDrafts(root),
@@ -44,22 +45,30 @@ function readProject(configPath: string): Project | null {
   const dbPath = path.join(root, ".cairn-harness", "harness.db");
   if (!existsSync(dbPath)) return base;
   const db = new DatabaseSync(dbPath, { readOnly: true });
+  const configured = new Set(config.roles.map((role) => role.name));
   const agents = safeAll(db, "SELECT agent_id,role,status,current_topic,updated_at FROM agents ORDER BY agent_id")
+    .filter((row) => configured.has(String(row.agent_id)))
     .map((row) => withLatestMessage(db, { ...dbAgent(row), prompt: config.roles.find((role) => role.name === row.agent_id)?.prompt, isLeader: row.agent_id === config.leader, isProducer: row.agent_id === config.producer }))
+    .map((agent) => paused ? { ...agent, status: "paused" as const, topic: undefined } : agent)
     .sort(leaderFirst);
   const activity = safeAll(db, "SELECT sequence,agent_id,status,output_json,completed_at FROM turns ORDER BY sequence DESC LIMIT 12").map(dbActivity);
   const storedWork = safeAll(db, "SELECT id,path,message_id,status,created_at FROM work_items ORDER BY created_at DESC LIMIT 20").map((row) => queueItem(root, row, config.leader));
   const queuedWork = readQueuedWork(root, config.work_dir || "work-items", config.leader);
-  const workItems = [...queuedWork, ...storedWork];
+  const workItems = [...queuedWork, ...storedWork].map((item) => paused && !isComplete(item.status) ? { ...item, status: "paused" } : item);
   const todos = safeAll(db, `SELECT t.path,t.ingested_at,t.message_id,m.recipient,m.topic,m.status message_status,
     (SELECT w.path FROM work_items w WHERE w.created_at<=t.ingested_at ORDER BY w.created_at DESC LIMIT 1) parent_path
     FROM todo_files t JOIN messages m ON m.id=t.message_id
-    WHERE m.status NOT IN ('completed','failed') ORDER BY t.ingested_at DESC LIMIT 20`).map((row) => todoItem(root, row));
+    WHERE m.status NOT IN ('completed','failed','cancelled') ORDER BY t.ingested_at DESC LIMIT 20`).map((row) => todoItem(root, row))
+    .map((item) => paused ? { ...item, status: "paused" } : item);
   const releases = safeCount(db, "SELECT COUNT(*) count FROM releases");
   const workItemCount = safeCount(db, "SELECT COUNT(*) count FROM work_items") + queuedWork.length;
   const activeWorkCount = safeCount(db, "SELECT COUNT(*) count FROM work_items WHERE status NOT IN ('done','completed','released')") + queuedWork.length;
   db.close();
   return { ...base, agents, activity, workItems, todos, releases, workItemCount, activeWorkCount };
+}
+
+function isComplete(status: string) {
+  return status === "done" || status === "completed" || status === "released";
 }
 
 function configPaths() {

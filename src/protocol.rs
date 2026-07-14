@@ -39,8 +39,8 @@ pub fn parse_output(text: &str) -> Result<AgentOutput> {
         },
         Err(error) => return Err(error).context("invalid agent envelope JSON"),
     };
-    if !output.is_actionable() {
-        bail!("incomplete agent output must send at least one message");
+    if !output.is_valid() {
+        bail!("agent output contains an em dash");
     }
 
     fn has_no_messages(payload: &str) -> bool {
@@ -132,6 +132,15 @@ mod tests {
         );
         let output = parse_output(&text).unwrap();
         assert_eq!(output.deliverable.as_deref(), Some("line one\nline two"));
+    }
+
+    #[test]
+    fn accepts_waiting_envelope_without_messages() {
+        let text = format!(
+            "{BEGIN}\n{{\"summary\":\"Waiting for review.\",\"deliverable\":null,\"messages\":[],\"complete\":false}}\n{END}"
+        );
+        let output = parse_output(&text).unwrap();
+        assert!(output.is_waiting());
     }
 
     #[test]

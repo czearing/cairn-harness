@@ -84,6 +84,14 @@ impl AgentOutput {
         (self.complete || !self.messages.is_empty()) && !self.uses_em_dash()
     }
 
+    pub fn is_waiting(&self) -> bool {
+        !self.complete && self.messages.is_empty() && !self.uses_em_dash()
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !self.uses_em_dash()
+    }
+
     fn uses_em_dash(&self) -> bool {
         self.summary.contains('\u{2014}')
             || self

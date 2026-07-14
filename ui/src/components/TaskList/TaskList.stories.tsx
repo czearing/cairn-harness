@@ -8,4 +8,6 @@ export const Default: Story = { args: {
   drafts: [{ id: "d", title: "Draft launch plan", meta: "", status: "draft" }],
   tasks: [{ id: "a", title: "Build launch", meta: "", status: "in-progress" }, { id: "b", title: "Research", meta: "", status: "done" }],
   onOpen: () => undefined,
+  onCancel: async () => undefined,
+  onDelete: async () => undefined,
 } };

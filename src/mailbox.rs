@@ -37,7 +37,7 @@ impl Store {
         let row: Option<(String, String, String, String, String, u32)> = sqlx::query_as(
             "UPDATE messages SET status='claimed',claimed_at=?,attempts=attempts+1,error=NULL
              WHERE id=(SELECT id FROM messages WHERE recipient=? AND status='pending'
-             ORDER BY created_at LIMIT 1)
+             ORDER BY CASE WHEN sender IN ('dashboard','human') THEN 0 ELSE 1 END, created_at LIMIT 1)
              RETURNING id,sender,recipient,topic,body,attempts",
         )
         .bind(Utc::now().to_rfc3339())
@@ -78,6 +78,15 @@ impl Store {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    pub async fn is_cancelled(&self, id: &str) -> Result<bool> {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM messages WHERE id=? AND status='cancelled'")
+                .bind(id)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(count > 0)
     }
 
     pub async fn retry(&self, id: &str, error: &str) -> Result<()> {
@@ -159,5 +168,47 @@ impl Store {
             .fetch_one(&self.pool)
             .await?;
         Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn claims_direct_user_messages_before_internal_backlog() {
+        let root = tempdir().unwrap();
+        let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+        store
+            .enqueue("ui-lead", "reviewer", "review", "older internal work")
+            .await
+            .unwrap();
+        store
+            .enqueue("dashboard", "reviewer", "dashboard-message", "user request")
+            .await
+            .unwrap();
+
+        let message = store.claim("reviewer").await.unwrap().unwrap();
+
+        assert_eq!(message.sender, "dashboard");
+        assert_eq!(message.body, "user request");
+    }
+
+    #[tokio::test]
+    async fn reports_cancelled_claims_for_late_output_suppression() {
+        let root = tempdir().unwrap();
+        let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+        store
+            .enqueue_keyed("task:child", "lead", "builder", "work", "build")
+            .await
+            .unwrap();
+        sqlx::query("UPDATE messages SET status='cancelled' WHERE id='task:child'")
+            .execute(&store.pool)
+            .await
+            .unwrap();
+
+        assert!(store.is_cancelled("task:child").await.unwrap());
     }
 }

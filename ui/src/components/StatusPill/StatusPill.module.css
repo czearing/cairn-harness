@@ -11,3 +11,4 @@
 .active .dot { background: var(--accent); box-shadow: 0 0 10px rgb(158 240 192 / 45%); }
 .danger .dot { background: var(--danger); }
 .idle .dot { background: #6c727c; }
+.paused .dot { background: var(--warning); box-shadow: none; }

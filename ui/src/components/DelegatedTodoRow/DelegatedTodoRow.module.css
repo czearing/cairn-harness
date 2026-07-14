@@ -1,8 +1,9 @@
-.row { width: 100%; display: grid; grid-template-columns: 30px 1fr; align-items: start; gap: 10px; padding: 10px 2px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text-muted); text-align: left; cursor: pointer; }
+.wrap { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; border-bottom: 1px solid var(--border); }
+.row { width: 100%; display: grid; grid-template-columns: 30px 1fr; align-items: start; gap: 10px; padding: 10px 2px; border: 0; background: transparent; color: var(--text-muted); text-align: left; cursor: pointer; }
 .row:last-child { border-bottom: 0; }
 .avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background-color: color-mix(in srgb, var(--todo-color) 16%, var(--surface-2)); background-position: center; background-size: cover; color: var(--todo-color); font: 650 9px var(--font-geist-mono); }
 .copy { min-width: 0; display: grid; gap: 3px; }
 .copy > span { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
 .copy strong { color: var(--todo-color); font-weight: 650; }
-.copy b { overflow: hidden; color: var(--text); font-size: 12px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
-.copy small { overflow: hidden; color: var(--text-subtle); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.copy [data-work-body] { display: -webkit-box; max-height: 2.9em; overflow: hidden; color: var(--text); font-size: 12px; line-height: 1.45; letter-spacing: normal; text-transform: none; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.copy small { color: var(--text-subtle); font-size: 10px; overflow-wrap: anywhere; }

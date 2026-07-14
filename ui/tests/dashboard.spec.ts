@@ -31,6 +31,63 @@ test("operator sees project, agents, queues, and activity", async ({ page }) => 
   expect(metrics.ready).toBeLessThan(1500);
 });
 
+test("task and delegated action bodies use two-line previews", async ({ page }) => {
+  await page.goto("/");
+  const task = page.getByRole("button", { name: /Prepare and ship the launch/ });
+  const action = page.getByRole("button", { name: /Build the launch page/ });
+  for (const row of [task, action]) {
+    const body = row.locator("span").filter({ hasText: /Prepare and ship|Build the launch/ }).last();
+    await expect(body).toBeVisible();
+    expect(await body.evaluate((node) => ({
+      clientHeight: node.clientHeight,
+      scrollHeight: node.scrollHeight,
+      lineClamp: getComputedStyle(node).webkitLineClamp,
+      overflow: getComputedStyle(node).overflow,
+    }))).toMatchObject({ lineClamp: "2", overflow: "hidden" });
+  }
+});
+
+test("long dynamic task and chat content renders completely", async ({ page }, testInfo) => {
+  const fs = await import("node:fs");
+  const { DatabaseSync } = await import("node:sqlite");
+  const root = path.join(process.cwd(), ".e2e", "workspace");
+  const suffix = testInfo.project.name;
+  const taskId = `long-content-${suffix}`;
+  const messageId = `long-chat-${suffix}`;
+  const taskPath = path.join(root, "work-items", "in-progress", `${taskId}.md`);
+  const paragraphs = Array.from({ length: 80 }, (_, index) => `Dynamic paragraph ${index + 1} ${"content ".repeat(12)}`);
+  const fullTask = `${paragraphs.join("\n\n")}\nFINAL_TASK_SENTINEL`;
+  fs.writeFileSync(taskPath, fullTask);
+  const db = new DatabaseSync(path.join(root, ".cairn-harness", "harness.db"));
+  db.prepare("INSERT OR REPLACE INTO work_items VALUES(?,?,?,?,?)")
+    .run(taskId, `work-items/in-progress/${taskId}.md`, `${messageId}-work`, "in-progress", new Date().toISOString());
+  const fullMessage = `${paragraphs.join("\n\n")}\nFINAL_CHAT_SENTINEL`;
+  db.prepare("INSERT OR REPLACE INTO messages VALUES(?,?,?,?,?,?,?)")
+    .run(messageId, "builder", "dashboard", "long-content", fullMessage, "completed", new Date().toISOString());
+  db.close();
+
+  try {
+    await page.goto("/");
+    const task = page.getByRole("button", { name: /Dynamic paragraph 1/ });
+    await expect(task).toBeVisible();
+    const taskBody = task.locator("span").filter({ hasText: "Dynamic paragraph 1" }).last();
+    expect(await taskBody.evaluate((node) => node.scrollHeight)).toBeGreaterThan(await taskBody.evaluate((node) => node.clientHeight));
+
+    await page.getByRole("button", { name: "Open conversation with builder" }).click();
+    const dialog = page.getByRole("dialog", { name: "Conversation with builder" });
+    const message = dialog.locator(`[data-chat-id="message:${messageId}"]`);
+    await expect(message.getByText(paragraphs[0], { exact: true })).toBeVisible();
+    await expect(message).toContainText("FINAL_CHAT_SENTINEL");
+    expect(await message.evaluate((node) => node.scrollHeight)).toBe(await message.evaluate((node) => node.clientHeight));
+  } finally {
+    const cleanup = new DatabaseSync(path.join(root, ".cairn-harness", "harness.db"));
+    cleanup.prepare("DELETE FROM work_items WHERE id=?").run(taskId);
+    cleanup.prepare("DELETE FROM messages WHERE id=?").run(messageId);
+    cleanup.close();
+    fs.rmSync(taskPath, { force: true });
+  }
+});
+
 test("project lead adds a task", async ({ page }) => {
   await page.goto("/");
   const inbox = path.join(process.cwd(), ".e2e", "workspace", "work-items", "inbox");
@@ -109,6 +166,14 @@ test("agent chat shows human and inter-agent history", async ({ page }) => {
   const tools = data.items.filter((message) => message.kind === "tool");
   expect(tools).toHaveLength(1);
   expect(tools[0]).toMatchObject({ sender: "lead", title: "Used view" });
+  const history = page.getByLabel("Conversation history with lead");
+  await expect.poll(() => history.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeLessThanOrEqual(1);
+  await expect(dialog.getByText("Task assigned", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText("Delegated task", { exact: true })).toHaveCount(0);
+  const assignment = dialog.locator('[data-chat-id="message:work-message"]');
+  const paragraphs = assignment.locator("p");
+  await expect(paragraphs).toHaveCount(1);
+  expect(await paragraphs.first().evaluate((node) => getComputedStyle(node.parentElement as HTMLElement).display)).not.toBe("flex");
 });
 
 test("todo and activity rows open their full source context", async ({ page }) => {
@@ -244,9 +309,25 @@ test("agent menu dismisses with Escape and outside click", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(more).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("menu")).toBeVisible();
+  const appearance = page.getByRole("menuitem", { name: "Appearance" });
+  const prompt = page.getByRole("menuitem", { name: "Edit prompt" });
+  await expect(appearance).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(prompt).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(appearance).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(more).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Open conversation with builder" })).toBeFocused();
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Shift+Tab");
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Open conversation with lead" })).toBeFocused();
   await more.click();
   await page.getByRole("heading", { name: "Agents" }).click();
   await expect(page.getByRole("menu")).toHaveCount(0);
@@ -322,6 +403,53 @@ test("settings owns project colors but not agent identity", async ({ page }) => 
   await page.reload();
   const project = page.getByRole("button", { name: /Persona test/ });
   await expect.poll(() => project.evaluate((node) => getComputedStyle(node).getPropertyValue("--project-color"))).toBe("#ff5500");
+});
+
+test("project settings pause, resume, and safely confirm deletion", async ({ page }) => {
+  const fs = await import("node:fs");
+  const worker = path.join(process.cwd(), ".e2e", "workspace", ".cairn-harness", "ui-worker.json");
+  const paused = path.join(process.cwd(), ".e2e", ".cairn-paused");
+  await page.goto("/");
+  const currentProject = page.getByRole("button", { name: /Persona test/ });
+  await currentProject.click({ button: "right" });
+  await page.getByRole("button", { name: "Pause agents" }).click();
+  await expect.poll(() => fs.existsSync(paused)).toBe(true);
+  await expect.poll(() => fs.existsSync(worker)).toBe(false);
+  await currentProject.click({ button: "right" });
+  await page.getByRole("button", { name: "Resume agents" }).click();
+  await expect.poll(() => fs.existsSync(paused)).toBe(false);
+  await expect.poll(() => fs.existsSync(worker)).toBe(true);
+
+  await page.getByRole("button", { name: "New project" }).click();
+  await page.getByLabel("Project name").fill("Disposable project");
+  await page.getByRole("button", { name: "Create project" }).click();
+  const project = page.getByRole("button", { name: /Disposable project/ });
+  await project.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete project…" }).click();
+  const confirmation = page.getByLabel("Confirm deletion of Disposable project");
+  const remove = page.getByRole("button", { name: "Delete permanently" });
+  await expect(remove).toBeDisabled();
+  await confirmation.fill("disposable-project");
+  await remove.click();
+  await expect(page.getByText("Disposable project", { exact: true })).toHaveCount(0);
+  expect(fs.existsSync(path.join(process.cwd(), ".e2e", "projects", "disposable-project"))).toBe(false);
+});
+
+test("agent overflow exposes a confirmed danger delete for non-leaders", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "New project" }).click();
+  await page.getByLabel("Project name").fill("Agent deletion project");
+  await page.getByRole("button", { name: "Create project" }).click();
+  await page.getByRole("button", { name: "More options for builder" }).click();
+  const remove = page.getByRole("menuitem", { name: "Delete agent…" });
+  await expect(remove).toHaveCSS("color", "rgb(255, 143, 136)");
+  await remove.click();
+  await page.getByRole("menuitem", { name: "Confirm delete agent" }).click();
+  await expect(page.getByRole("heading", { name: "builder" })).toHaveCount(0);
+  await page.getByRole("button", { name: /Agent deletion project/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete project…" }).click();
+  await page.getByLabel("Confirm deletion of Agent deletion project").fill("agent-deletion-project");
+  await page.getByRole("button", { name: "Delete permanently" }).click();
 });
 
 test("chat uses accent for the user and stable identity colors for agents", async ({ page }) => {

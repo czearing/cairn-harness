@@ -4,6 +4,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { getProject, getProjectConfigPath } from "./projects";
 import { ensureProjectRunning } from "./supervisor";
+import { restartProject } from "./supervisor";
 
 interface Role { name: string; description: string; prompt: string; }
 
@@ -49,6 +50,31 @@ export function updateAgentPrompt(projectId: string, agentId: string, prompt: st
   if (!role) throw new Error("Agent not found");
   role.prompt = prompt;
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+export function deleteAgent(projectId: string, agentId: string) {
+  const configPath = getProjectConfigPath(projectId);
+  if (!configPath) throw new Error("Project config not found");
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as { leader?: string; producer?: string; roles?: Role[] };
+  if (config.leader === agentId) throw new Error("Reassign leadership before deleting this agent");
+  const roles = config.roles || [];
+  if (!roles.some((role) => role.name === agentId)) throw new Error("Agent not found");
+  config.roles = roles.filter((role) => role.name !== agentId);
+  if (config.producer === agentId) delete config.producer;
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  restartProject(projectId);
+}
+
+export function clearAgentContext(projectId: string, agentId: string) {
+  const project = requiredProject(projectId);
+  const database = path.join(project.root, ".cairn-harness", "harness.db");
+  if (!existsSync(database)) throw new Error("Project database not found");
+  const db = new DatabaseSync(database);
+  const result = db.prepare("UPDATE agents SET session_id='',status='idle',current_topic=NULL,updated_at=? WHERE agent_id=?")
+    .run(new Date().toISOString(), agentId);
+  db.close();
+  if (!result.changes) throw new Error("Agent not found");
+  restartProject(projectId);
 }
 
 export function saveDocument(projectId: string, relative: string, body: string) {

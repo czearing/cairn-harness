@@ -1,6 +1,6 @@
 .markdown > :first-child { margin-top: 0; }
 .markdown > :last-child { margin-bottom: 0; }
-.markdown p, .markdown li { font-size: 12px; line-height: 1.55; }
+.markdown p, .markdown li { font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .markdown ul, .markdown ol { padding-left: 20px; }
 .markdown h1, .markdown h2, .markdown h3 { margin: 14px 0 7px; font-size: 13px; }
 .markdown a { color: var(--accent); text-underline-offset: 2px; }

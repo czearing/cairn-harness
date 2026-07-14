@@ -1,0 +1,13 @@
+.activity { position: sticky; top: 0; height: 100vh; overflow: auto; padding: 18px 16px; border-left: 1px solid var(--border); background: #0d0f11; }
+.title { display: flex; align-items: center; gap: 8px; height: 32px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 11px; font-weight: 600; }
+.clearWrap { position: relative; margin-left: auto; }
+.title button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-subtle); cursor: pointer; }
+.title button:hover { background: var(--surface-hover); color: var(--text); }
+.clearMenu { position: absolute; z-index: 3; top: 28px; right: 0; width: 220px; display: grid; gap: 5px; padding: 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-2); box-shadow: var(--shadow-panel); }
+.clearMenu strong { color: var(--text); font-size: 11px; }
+.clearMenu > span { color: var(--text-subtle); font-size: 9px; font-weight: 400; line-height: 1.4; }
+.clearMenu > div { display: flex; justify-content: flex-end; gap: 5px; margin-top: 4px; }
+.clearMenu > div button { width: auto; min-width: 52px; padding: 0 8px; border: 1px solid var(--border); }
+.blank { padding: 24px 0; color: var(--text-subtle); font-size: 11px; text-align: center; }
+@media (max-width: 1050px) { .activity { display: none; } }
+@media (max-width: 720px) { .activity { display: block; position: static; width: 100%; height: auto; padding: 16px; border-left: 0; border-top: 1px solid var(--border); } }

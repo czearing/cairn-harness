@@ -7,12 +7,10 @@
 .agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .workGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 26px; }
 .workGrid:has([aria-label="Task editor"]) > section:first-child { grid-column: 1 / -1; }
-.activity { position: sticky; top: 0; height: 100vh; overflow: auto; padding: 18px 16px; border-left: 1px solid var(--border); background: #0d0f11; }
-.activityTitle { display: flex; align-items: center; gap: 8px; height: 32px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 11px; font-weight: 600; }
 .blank { padding: 24px 0; color: var(--text-subtle); font-size: 11px; text-align: center; }
 .empty { min-height: 100vh; display: grid; place-content: center; justify-items: center; text-align: center; }
 .empty h1 { margin: 0; font-size: 20px; }
 .empty p { color: var(--text-muted); font-size: 12px; }
 .empty button { min-height: 34px; border: 0; border-radius: 6px; padding: 0 12px; background: var(--accent); color: #07110b; font-weight: 650; cursor: pointer; }
-@media (max-width: 1050px) { .shell { grid-template-columns: 200px 1fr; } .activity { display: none; } }
-@media (max-width: 720px) { .shell { display: block; } .main { padding: 22px 16px 30px; } .workGrid { grid-template-columns: 1fr; } .activity { display: block; position: static; width: 100%; height: auto; padding: 16px; border-left: 0; border-top: 1px solid var(--border); } }
+@media (max-width: 1050px) { .shell { grid-template-columns: 200px 1fr; } }
+@media (max-width: 720px) { .shell { display: block; } .main { padding: 22px 16px 30px; } .workGrid { grid-template-columns: 1fr; } }

@@ -5,6 +5,7 @@
 .editor input[type="color"] { width: 32px; height: 32px; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .upload input { max-width: 220px; color: var(--text-subtle); font-size: 10px; }
 .editor button { min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.editor .danger { border-color: rgb(190 56 48 / 35%); background: rgb(190 56 48 / 12%); color: #ff8f88; }
 .note, .error { font-size: 11px; }
 .note { color: var(--text-subtle); }
 .error { color: var(--danger); }

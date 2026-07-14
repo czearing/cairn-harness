@@ -1,9 +1,10 @@
-.row { width: 100%; display: grid; grid-template-columns: 16px 1fr auto; gap: 10px; align-items: center; min-height: 48px; padding: 8px 2px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text-muted); text-align: left; cursor: pointer; }
+.wrap { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; border-bottom: 1px solid var(--border); }
+.row { width: 100%; display: grid; grid-template-columns: 16px 1fr auto; gap: 10px; align-items: center; min-height: 48px; padding: 8px 2px; border: 0; background: transparent; color: var(--text-muted); text-align: left; cursor: pointer; }
 .row:last-child { border-bottom: 0; }
 .row:hover { color: var(--text); }
 .copy { min-width: 0; display: grid; gap: 3px; }
-.copy strong { color: var(--text); font-size: 12px; font-weight: 540; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.copy span { overflow: hidden; color: var(--text-subtle); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.copy span { color: var(--text-subtle); font-size: 10px; overflow-wrap: anywhere; }
+.copy [data-work-body] { display: -webkit-box; max-height: 2.9em; overflow: hidden; color: var(--text); font-size: 12px; line-height: 1.45; text-overflow: clip; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .status { padding: 3px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-subtle); font-size: 11px; text-transform: capitalize; }
 .active { position: relative; overflow: hidden; background-image: linear-gradient(105deg, transparent 15%, rgb(158 240 192 / 6%) 42%, transparent 68%); background-size: 220% 100%; animation: task-progress 3s linear infinite; }
 .active .status { color: var(--accent); }

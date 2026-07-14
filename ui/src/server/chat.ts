@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { Agent, ChatMessage, ConversationPage } from "@/lib/types";
 import { readSessionEvents } from "./session-events";
 
-export function readConversationPage(db: DatabaseSync, root: string, agent: Agent, before?: string, focusId?: string, limit = 80): ConversationPage {
+export function readConversationPage(db: DatabaseSync, root: string, agent: Agent, before?: string, focusId?: string, limit = 30): ConversationPage {
   const all = readConversation(db, root, agent);
   if (focusId) {
     const focus = all.findIndex((message) => message.id === focusId);
