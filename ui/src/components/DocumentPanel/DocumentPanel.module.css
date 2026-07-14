@@ -1,5 +1,0 @@
-.panel header { padding-bottom: 14px; border-bottom: 1px solid var(--border); }
-.panel header span { color: var(--accent); font-size: 9px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }
-.panel h3 { margin: 5px 0 4px; font-size: 15px; }
-.panel header p { margin: 0; color: var(--text-muted); font: 10px var(--font-geist-mono); overflow-wrap: anywhere; }
-.panel pre { margin: 0; padding: 16px 0; white-space: pre-wrap; color: var(--text); font: 12px/1.65 var(--font-geist-sans); }

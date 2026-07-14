@@ -10,5 +10,6 @@ export const History: Story = { args: {
     { id: "1", sender: "concept", recipient: "writer", body: "Write from this concept.", status: "completed", timestamp: new Date().toISOString(), direction: "incoming", kind: "message" },
     { id: "2", sender: "writer", recipient: "team", body: "Draft complete.", status: "completed", timestamp: new Date().toISOString(), direction: "outgoing", kind: "assistant" },
   ],
+  olderCount: 0,
   onSend: async () => undefined,
 } };

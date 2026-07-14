@@ -1,0 +1,17 @@
+.page { position: relative; margin-top: 14px; }
+.toolbar { position: sticky; top: 12px; z-index: 3; justify-self: start; display: flex; gap: 3px; margin: 0 0 18px; padding: 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-1); box-shadow: 0 8px 24px rgb(0 0 0 / 14%); }
+.toolbar button { display: grid; place-items: center; width: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.toolbar button:hover { background: var(--surface-hover); color: var(--text); }
+.editor { min-height: 280px; outline: none; color: var(--text); font-size: 15px; line-height: 1.72; caret-color: var(--accent); }
+.editor:focus-visible { box-shadow: none; }
+.placeholder { position: absolute; top: 62px; color: var(--text-subtle); font-size: 15px; pointer-events: none; }
+:global(.md-h1) { margin: 28px 0 10px; font-size: 30px; letter-spacing: -.035em; }
+:global(.md-h2) { margin: 24px 0 8px; font-size: 22px; letter-spacing: -.025em; }
+:global(.md-h3) { margin: 20px 0 7px; font-size: 17px; }
+:global(.md-ul), :global(.md-ol) { padding-left: 24px; }
+:global(.md-li) { margin: 5px 0; }
+:global(.md-quote) { margin: 18px 0; padding-left: 14px; border-left: 2px solid var(--border-strong); color: var(--text-muted); }
+:global(.md-bold) { font-weight: 700; }
+:global(.md-italic) { font-style: italic; }
+:global(.md-code) { padding: 2px 5px; border-radius: 4px; background: var(--surface-2); font: .88em var(--font-geist-mono); }
+:global(.md-codeblock) { display: block; overflow: auto; padding: 14px; border-radius: 8px; background: var(--surface-2); font: 12px/1.6 var(--font-geist-mono); }

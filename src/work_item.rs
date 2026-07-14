@@ -36,8 +36,8 @@ pub async fn ingest(config: &ProjectConfig, store: &Store) -> Result<usize> {
     Ok(count)
 }
 
-pub async fn complete(config: &ProjectConfig, store: &Store) -> Result<bool> {
-    let Some(path) = store.complete_oldest_work().await? else {
+pub async fn complete(config: &ProjectConfig, store: &Store, message_id: &str) -> Result<bool> {
+    let Some(path) = store.complete_work(message_id).await? else {
         return Ok(false);
     };
     let source = config.root.join(&path);
@@ -50,6 +50,8 @@ pub async fn complete(config: &ProjectConfig, store: &Store) -> Result<bool> {
     if source.exists() {
         move_file(&source, &target)?;
     }
+    let relative = relative(config, &target);
+    store.set_work_path(message_id, &relative).await?;
     Ok(true)
 }
 

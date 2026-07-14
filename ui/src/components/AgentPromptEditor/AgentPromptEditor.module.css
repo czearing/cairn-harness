@@ -1,0 +1,9 @@
+.editor { margin-top: 14px; padding: 14px 2px 4px; border-top: 1px solid var(--border); }
+.editor > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.editor > header div { display: grid; gap: 3px; }
+.editor > header strong { font-size: 12px; }
+.editor > header span { color: var(--text-muted); font-size: 10px; }
+.editor > header button { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 7px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.editor footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+.editor footer span { margin-right: auto; color: var(--text-subtle); font: 9px var(--font-geist-mono); }
+.editor footer button { min-height: 32px; border: 1px solid var(--border-strong); border-radius: 7px; padding: 0 11px; background: var(--surface-2); color: var(--text); font-size: 11px; cursor: pointer; }

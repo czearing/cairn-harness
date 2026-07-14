@@ -1,0 +1,13 @@
+.workspace { margin-top: 14px; padding: 14px 2px 4px; border-top: 1px solid var(--border); }
+.workspace > header { display: flex; align-items: center; gap: 8px; min-height: 34px; }
+.workspace > header div { display: flex; align-items: center; gap: 8px; margin-right: auto; }
+.workspace > header span, .workspace > header strong { font: 9px var(--font-geist-mono); }
+.workspace > header span { color: var(--text-subtle); text-transform: uppercase; }
+.workspace > header strong { color: var(--accent); }
+.workspace button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; border: 1px solid var(--border); border-radius: 7px; padding: 0 9px; background: transparent; color: var(--text-muted); font-size: 10px; cursor: pointer; }
+.workspace button:hover { border-color: var(--border-strong); color: var(--text); }
+.workspace button:disabled { opacity: .4; cursor: default; }
+.send { border-color: var(--accent) !important; background: var(--accent) !important; color: #07110b !important; font-weight: 650; }
+.close { width: 30px; padding: 0 !important; }
+.error { margin: 10px 0 0; color: var(--danger); font-size: 11px; }
+@media (max-width: 720px) { .workspace > header { flex-wrap: wrap; } .workspace > header div { width: 100%; } }

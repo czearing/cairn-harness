@@ -3,5 +3,9 @@
 .row:hover { color: var(--text); }
 .copy { min-width: 0; display: grid; gap: 3px; }
 .copy strong { color: var(--text); font-size: 12px; font-weight: 540; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.copy span { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copy span { overflow: hidden; color: var(--text-subtle); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .status { padding: 3px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-subtle); font-size: 11px; text-transform: capitalize; }
+.active { position: relative; overflow: hidden; background-image: linear-gradient(105deg, transparent 15%, rgb(158 240 192 / 6%) 42%, transparent 68%); background-size: 220% 100%; animation: task-progress 3s linear infinite; }
+.active .status { color: var(--accent); }
+@keyframes task-progress { to { background-position: -220% 0; } }
+@media (prefers-reduced-motion: reduce) { .active { animation: none; } }

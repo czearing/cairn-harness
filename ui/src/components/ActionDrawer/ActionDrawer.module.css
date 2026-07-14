@@ -1,4 +1,4 @@
-.backdrop { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: flex-end; background: rgb(0 0 0 / 48%); backdrop-filter: blur(2px); }
+.backdrop { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: flex-end; background: rgb(0 0 0 / 48%); }
 .drawer { width: min(420px, 100%); height: 100%; background: var(--surface-1); border-left: 1px solid var(--border-strong); box-shadow: var(--shadow-panel); animation: enter 160ms ease-out; }
 .wide { width: min(620px, 100%); }
 .drawer > header { height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--border); }

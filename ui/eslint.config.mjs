@@ -17,6 +17,18 @@ const eslintConfig = defineConfig([
     "storybook-static/**",
     "next-env.d.ts",
   ]),
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        paths: [{
+          name: "react",
+          importNames: ["memo", "useMemo", "useCallback"],
+          message: "React Compiler owns memoization in this app.",
+        }],
+      }],
+    },
+  },
   ...storybook.configs["flat/recommended"]
 ]);
 

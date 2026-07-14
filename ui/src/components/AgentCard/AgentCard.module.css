@@ -1,8 +1,19 @@
-.card { width: 100%; min-height: 150px; display: flex; flex-direction: column; justify-content: space-between; gap: 20px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-1); color: var(--text); text-align: left; cursor: pointer; transition: border-color 140ms ease, transform 140ms ease, background 140ms ease; }
+.card { position: relative; min-height: 150px; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-1); transition: border-color 140ms ease, transform 140ms ease, background 140ms ease; }
 .card:hover { border-color: var(--border-strong); background: var(--surface-hover); transform: translateY(-1px); }
+.hit { position: absolute; inset: 0; z-index: 1; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
 .top, .footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: color-mix(in srgb, var(--agent-color, var(--text-muted)) 18%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--agent-color, var(--border)) 48%, var(--border)); color: var(--agent-color, var(--text-muted)); font: 650 10px var(--font-geist-mono); }
+.top { position: relative; }
+.avatar { position: relative; z-index: 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background-color: color-mix(in srgb, var(--agent-color, var(--text-muted)) 18%, var(--surface-2)); background-position: center; background-size: cover; border: 1px solid color-mix(in srgb, var(--agent-color, var(--border)) 48%, var(--border)); color: var(--agent-color, var(--text-muted)); font: 650 10px var(--font-geist-mono); }
+.crown { position: absolute; top: -7px; right: -7px; padding: 2px; border-radius: 50%; background: var(--surface-1); color: var(--warning); box-sizing: content-box; }
+.producer { position: absolute; right: -7px; bottom: -7px; padding: 2px; border-radius: 50%; background: var(--surface-1); color: var(--info); box-sizing: content-box; }
+.controls { position: relative; z-index: 2; display: flex; align-items: center; gap: 5px; }
+.more { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--text-subtle); cursor: pointer; }
+.more:hover { background: var(--surface-hover); color: var(--text); }
+.menu { position: absolute; z-index: 4; top: 32px; right: 0; width: 132px; padding: 4px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-2); box-shadow: var(--shadow-panel); }
+.menu button { width: 100%; min-height: 30px; border: 0; border-radius: 5px; padding: 0 8px; background: transparent; color: var(--text-muted); font-size: 11px; text-align: left; cursor: pointer; }
+.menu button:hover { background: var(--surface-hover); color: var(--text); }
+.identity, .footer { pointer-events: none; }
 .identity h3 { margin: 0 0 4px; font-size: 14px; font-weight: 590; letter-spacing: -0.01em; }
-.identity p, .footer span { margin: 0; color: var(--text-muted); font-size: 12px; }
-.footer > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.open { flex: 0 0 auto; color: var(--text-subtle) !important; font-size: 10px !important; }
+.identity p { margin: 0; color: var(--text-muted); font-size: 12px; }
+.footer span { overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.footer time { flex: 0 0 auto; color: var(--text-subtle); font: 9px var(--font-geist-mono); }

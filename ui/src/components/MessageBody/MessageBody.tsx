@@ -7,7 +7,7 @@ export function MessageBody({ message }: { message: ChatMessage }) {
   const body = envelopeBody(message.body);
   if (message.kind === "tool") {
     return <details className={styles.details}>
-      <summary>View tool details</summary>
+      <summary>Show details</summary>
       <FormattedBody body={body} />
     </details>;
   }

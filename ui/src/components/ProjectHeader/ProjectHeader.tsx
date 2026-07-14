@@ -9,7 +9,7 @@ export function ProjectHeader({ name, root, active, releases, onAdd }: Props) {
       <div><span>Project</span><h1>{name}</h1><p>{root}</p></div>
       <div className={styles.actions}>
         <dl><div><dt>Active</dt><dd>{active}</dd></div><div><dt>Releases</dt><dd>{releases}</dd></div></dl>
-        <button onClick={onAdd}><Plus size={14} />New work item</button>
+        <button onClick={onAdd}><Plus size={14} />New task</button>
       </div>
     </header>
   );

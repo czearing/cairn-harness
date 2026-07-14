@@ -13,8 +13,11 @@
   cursor: pointer;
   text-align: left;
 }
-.item:hover { background: var(--surface-hover); color: var(--text); }
-.active { background: var(--surface-2); color: var(--text); }
-.mark { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--border-strong); border-radius: 5px; font: 600 10px var(--font-geist-mono); }
+.item:hover { background: color-mix(in srgb, var(--project-color) 9%, var(--surface-hover)); color: var(--text); }
+.active { background: color-mix(in srgb, var(--project-color) 10%, var(--surface-2)); color: var(--text); }
+.mark { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid color-mix(in srgb, var(--project-color) 55%, var(--border-strong)); border-radius: 5px; background: color-mix(in srgb, var(--project-color) 12%, transparent); color: var(--project-color); font: 600 10px var(--font-geist-mono); }
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .count { font: 500 10px var(--font-geist-mono); color: var(--text-subtle); }
+.progress { background-image: linear-gradient(110deg, transparent 20%, color-mix(in srgb, var(--project-color) 12%, transparent) 45%, transparent 70%); background-size: 220% 100%; animation: progress 3.2s linear infinite; }
+@keyframes progress { to { background-position: -220% 0; } }
+@media (prefers-reduced-motion: reduce) { .progress { animation: none; } }

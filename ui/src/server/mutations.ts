@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { getProject, getProjectConfigPath } from "./projects";
@@ -10,6 +10,7 @@ interface Role { name: string; description: string; prompt: string; }
 export function sendMessage(projectId: string, agent: string, body: string) {
   const project = requiredProject(projectId);
   const db = new DatabaseSync(path.join(/*turbopackIgnore: true*/ project.root, ".cairn-harness", "harness.db"));
+  db.exec("PRAGMA busy_timeout=5000");
   db.prepare("INSERT INTO messages(id,sender,recipient,topic,body,status,created_at) VALUES(?,?,?,?,?,'pending',?)")
     .run(randomUUID(), "dashboard", agent, "dashboard-message", body, new Date().toISOString());
   db.close();
@@ -23,6 +24,36 @@ export function createWorkItem(projectId: string, body: string) {
   mkdirSync(directory, { recursive: true });
   writeFileSync(path.join(directory, `${Date.now()}-${randomUUID().slice(0, 8)}.md`), `${body.trim()}\n`);
   ensureProjectRunning(projectId);
+}
+
+export function saveDraft(projectId: string, id: string, body: string) {
+  const project = requiredProject(projectId);
+  const file = path.join(project.root, ".cairn-harness", "drafts", `${safeId(id)}.md`);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${body.trimEnd()}\n`);
+}
+
+export function deleteDraft(projectId: string, id: string) {
+  const project = requiredProject(projectId);
+  rmSync(path.join(project.root, ".cairn-harness", "drafts", `${safeId(id)}.md`), { force: true });
+}
+
+export function updateAgentPrompt(projectId: string, agentId: string, prompt: string) {
+  const configPath = getProjectConfigPath(projectId);
+  if (!configPath) throw new Error("Project config not found");
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as { roles?: Role[] };
+  const role = config.roles?.find((candidate) => candidate.name === agentId);
+  if (!role) throw new Error("Agent not found");
+  role.prompt = prompt;
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+export function saveDocument(projectId: string, relative: string, body: string) {
+  const project = requiredProject(projectId);
+  const root = path.resolve(project.root);
+  const file = path.resolve(root, relative);
+  if (!file.startsWith(`${root}${path.sep}`)) throw new Error("Document path is outside the project");
+  writeFileSync(file, `${body.trimEnd()}\n`);
 }
 
 function addWorkDirectory(projectId: string) {
@@ -67,4 +98,8 @@ function parseRole(line: string) {
 
 function slug(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+function safeId(value: string) {
+  if (!/^[a-zA-Z0-9-]+$/.test(value)) throw new Error("Invalid draft id");
+  return value;
 }

@@ -16,6 +16,10 @@ pub fn build(
     writeln!(prompt, "Project: {}", config.name).unwrap();
     writeln!(prompt, "Agent: {}", worker.id).unwrap();
     writeln!(prompt, "Role: {}. {}", worker.description, worker.prompt).unwrap();
+    writeln!(prompt, "Team:").unwrap();
+    for teammate in config.workers() {
+        writeln!(prompt, "{}: {}", teammate.id, teammate.description).unwrap();
+    }
     writeln!(prompt, "Activity:").unwrap();
     for state in states {
         writeln!(
@@ -30,6 +34,13 @@ pub fn build(
     writeln!(prompt, "From: {}", message.sender).unwrap();
     writeln!(prompt, "Topic: {}", message.topic).unwrap();
     writeln!(prompt, "Input:\n{}", message.body).unwrap();
+    if worker.id == config.leader() && message.topic == "work-item" {
+        writeln!(
+            prompt,
+            "Lead through the team. Delegate meaningful specialist portions to relevant teammates by default, then synthesize their results. Work alone only when no teammate role is relevant."
+        )
+        .unwrap();
+    }
     writeln!(
         prompt,
         "Return one JSON envelope. No em dashes.\n{BEGIN}\n{{\"summary\":\"...\",\"deliverable\":\"... or null\",\"messages\":[{{\"to\":\"agent\",\"topic\":\"...\",\"body\":\"...\"}}],\"complete\":true}}\n{END}"

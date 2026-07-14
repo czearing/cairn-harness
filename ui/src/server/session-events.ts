@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import type { ChatMessage } from "@/lib/types";
 
@@ -7,6 +7,7 @@ interface SessionEvent {
   timestamp?: string | number;
   data?: Record<string, unknown>;
 }
+const sessionCache = new Map<string, { version: string; messages: ChatMessage[] }>();
 
 export function readSessionEvents(root: string, agent: string): ChatMessage[] {
   const directory = path.join(root, ".cairn-harness", "copilot-home", agent, "session-state");
@@ -19,15 +20,23 @@ export function readSessionEvents(root: string, agent: string): ChatMessage[] {
 
 function readSession(file: string, agent: string, sessionId: string) {
   if (!existsSync(file)) return [];
+  const stats = statSync(file);
+  const version = `${stats.size}:${stats.mtimeMs}`;
+  const cached = sessionCache.get(file);
+  if (cached?.version === version) return cached.messages;
   const events = readFileSync(file, "utf8").split("\n").filter(Boolean).flatMap(parseLine);
   const tools = new Map<string, string>();
+  const completed = new Set<string>();
   for (const event of events) {
     const data = event.data || {};
     if (event.type === "tool.execution_start" && data.toolCallId) {
       tools.set(String(data.toolCallId), String(data.toolName || "tool"));
     }
+    if (event.type === "tool.execution_complete" && data.toolCallId) completed.add(String(data.toolCallId));
   }
-  return events.flatMap((event, index) => eventMessages(event, agent, sessionId, index, tools));
+  const messages = events.flatMap((event, index) => eventMessages(event, agent, sessionId, index, tools, completed));
+  sessionCache.set(file, { version, messages });
+  return messages;
 }
 
 function parseLine(line: string): SessionEvent[] {
@@ -35,7 +44,7 @@ function parseLine(line: string): SessionEvent[] {
   catch { return []; }
 }
 
-function eventMessages(event: SessionEvent, agent: string, sessionId: string, index: number, tools: Map<string, string>): ChatMessage[] {
+function eventMessages(event: SessionEvent, agent: string, sessionId: string, index: number, tools: Map<string, string>, completed: Set<string>): ChatMessage[] {
   const data = event.data || {};
   const timestamp = eventTime(event.timestamp);
   switch (event.type) {
@@ -43,11 +52,12 @@ function eventMessages(event: SessionEvent, agent: string, sessionId: string, in
       return data.content ? [item(sessionId, index, agent, "team", String(data.content), timestamp, "assistant", "Response")] : [];
     case "tool.execution_start": {
       const name = String(data.toolName || "tool");
-      return [item(sessionId, index, agent, name, compact(data.arguments), timestamp, "tool", `Tool: ${name}`)];
+      if (completed.has(String(data.toolCallId))) return [];
+      return [item(sessionId, index, agent, name, compact(data.arguments), timestamp, "tool", `Using ${toolLabel(name)}`)];
     }
     case "tool.execution_complete": {
       const name = tools.get(String(data.toolCallId)) || "tool";
-      return [item(sessionId, index, name, agent, compact(toolResult(data.result, data.success)), timestamp, "tool", `Tool result: ${name}`)];
+      return [item(sessionId, index, agent, name, compact(toolResult(data.result, data.success)), timestamp, "tool", `Used ${toolLabel(name)}`)];
     }
     case "session.start":
       return [item(sessionId, index, "system", agent, `Session ${String(data.sessionId || sessionId)} started`, timestamp, "session", "Session started")];
@@ -75,6 +85,10 @@ function toolResult(result: unknown, success: unknown) {
     return String((result as { content?: unknown }).content || success || "");
   }
   return result || success;
+}
+function toolLabel(name: string) {
+  const cleaned = name.replace(/^(cairnlearn|cairn)-/, "").replace(/[_-]+/g, " ").trim();
+  return cleaned === "skill output" ? "skill review" : cleaned || "tool";
 }
 function eventTime(value: string | number | undefined) {
   if (typeof value === "number") return new Date(value).toISOString();

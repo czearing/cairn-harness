@@ -1,11 +1,8 @@
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-    time::Duration,
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
 };
-
+use std::time::Duration;
 use tokio::{
     sync::{Semaphore, watch},
     time::{interval, sleep},
@@ -99,7 +96,12 @@ async fn process(ctx: &WorkerContext, message: Message) -> Result<()> {
             )
             .await?;
             handoff::dispatch(ctx, &message.id, &output).await?;
-            release::publish(&ctx.config, &ctx.store, &ctx.worker.id, &message, &output).await?;
+            let released =
+                release::publish(&ctx.config, &ctx.store, &ctx.worker.id, &message, &output)
+                    .await?;
+            if output.messages.is_empty() && (ctx.worker.id == ctx.config.leader() || released) {
+                crate::work_item::complete(&ctx.config, &ctx.store, &message.id).await?;
+            }
             ctx.store.finish(&message.id, "completed", None).await?;
             ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
         }
@@ -184,14 +186,12 @@ fn take_budget(budget: &AtomicUsize) -> bool {
 }
 
 struct ActiveGuard(Arc<AtomicUsize>);
-
 impl ActiveGuard {
     fn new(active: Arc<AtomicUsize>) -> Self {
         active.fetch_add(1, Ordering::SeqCst);
         Self(active)
     }
 }
-
 impl Drop for ActiveGuard {
     fn drop(&mut self) {
         self.0.fetch_sub(1, Ordering::SeqCst);

@@ -1,0 +1,10 @@
+.editor { display: grid; justify-items: start; gap: 16px; }
+.preview { display: grid; place-items: center; width: 72px; height: 72px; overflow: hidden; border: 2px solid; border-radius: 18px; background-color: var(--surface-2); background-position: center; background-size: cover; font: 700 16px var(--font-geist-mono); }
+.editor h3 { margin: -6px 0 2px; font-size: 15px; }
+.editor label { width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 12px; }
+.editor input[type="color"] { width: 32px; height: 32px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.upload input { max-width: 220px; color: var(--text-subtle); font-size: 10px; }
+.editor button { min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.note, .error { font-size: 11px; }
+.note { color: var(--text-subtle); }
+.error { color: var(--danger); }

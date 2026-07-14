@@ -55,15 +55,27 @@ impl Store {
         Ok(count)
     }
 
-    pub async fn complete_oldest_work(&self) -> Result<Option<String>> {
+    pub async fn complete_work(&self, message_id: &str) -> Result<Option<String>> {
         let row: Option<(String, String)> = sqlx::query_as(
             "UPDATE work_items SET status='done',completed_at=?
-             WHERE id=(SELECT id FROM work_items WHERE status='in-progress'
-             ORDER BY created_at LIMIT 1) RETURNING id,path",
+             WHERE id=(SELECT id FROM work_items
+             WHERE status='in-progress' AND (?=message_id OR ? LIKE message_id || ':%')
+             ORDER BY length(message_id) DESC LIMIT 1) RETURNING id,path",
         )
         .bind(Utc::now().to_rfc3339())
+        .bind(message_id)
+        .bind(message_id)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.map(|value| value.1))
+    }
+
+    pub async fn set_work_path(&self, message_id: &str, path: &str) -> Result<()> {
+        sqlx::query("UPDATE work_items SET path=? WHERE message_id=?")
+            .bind(path)
+            .bind(message_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 }

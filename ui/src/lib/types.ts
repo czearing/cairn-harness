@@ -6,6 +6,11 @@ export interface Agent {
   status: AgentStatus;
   topic?: string;
   updatedAt: string;
+  lastMessage?: string;
+  lastMessageAt?: string;
+  prompt?: string;
+  isLeader?: boolean;
+  isProducer?: boolean;
 }
 
 export interface QueueItem {
@@ -14,6 +19,9 @@ export interface QueueItem {
   meta: string;
   status: string;
   content?: string;
+  agentId?: string;
+  chatId?: string;
+  context?: string;
 }
 
 export interface Activity {
@@ -37,6 +45,12 @@ export interface ChatMessage {
   title?: string;
 }
 
+export interface ConversationPage {
+  items: ChatMessage[];
+  hasMore: boolean;
+  nextBefore?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -45,7 +59,10 @@ export interface Project {
   workItems: QueueItem[];
   todos: QueueItem[];
   activity: Activity[];
-  conversations: Record<string, ChatMessage[]>;
+  conversations?: Record<string, ChatMessage[]>;
   workDir?: string;
   releases: number;
+  workItemCount?: number;
+  activeWorkCount?: number;
+  drafts?: QueueItem[];
 }

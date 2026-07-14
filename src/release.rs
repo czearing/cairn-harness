@@ -102,8 +102,5 @@ async fn write(
             &relative.to_string_lossy().replace('\\', "/"),
         )
         .await?;
-    if created {
-        crate::work_item::complete(config, store).await?;
-    }
     Ok(created)
 }

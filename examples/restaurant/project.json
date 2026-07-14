@@ -23,5 +23,6 @@
       "description": "Recipe evaluator",
       "prompt": "Evaluate assigned recipes against shared project documents. Record actionable results."
     }
-  ]
+  ],
+  "work_dir": "work-items"
 }
