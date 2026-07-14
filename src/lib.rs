@@ -22,6 +22,7 @@ mod todo_store;
 pub mod transcript;
 mod transcript_store;
 mod turn;
+mod turn_signal;
 mod watch;
 mod work_item;
 mod work_item_store;

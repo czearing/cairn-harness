@@ -52,13 +52,13 @@ pub async fn run(
                     .modes(response.modes)
                     .meta(response.meta);
                 let session = connection.attach_session(attached, Vec::new())?;
-                return crate::acp_session::serve(session, worker, jobs, ready, true).await;
+                return crate::acp_session::serve(session, root, worker, jobs, ready, true).await;
             }
             connection
-                .build_session(root)
+                .build_session(root.clone())
                 .block_task()
                 .run_until(async |session| {
-                    crate::acp_session::serve(session, worker, jobs, ready, false).await
+                    crate::acp_session::serve(session, root, worker, jobs, ready, false).await
                 })
                 .await
         })

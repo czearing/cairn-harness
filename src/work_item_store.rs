@@ -71,8 +71,9 @@ impl Store {
     }
 
     pub async fn set_work_path(&self, message_id: &str, path: &str) -> Result<()> {
-        sqlx::query("UPDATE work_items SET path=? WHERE message_id=?")
+        sqlx::query("UPDATE work_items SET path=? WHERE message_id=? OR ? LIKE message_id || ':%'")
             .bind(path)
+            .bind(message_id)
             .bind(message_id)
             .execute(&self.pool)
             .await?;
