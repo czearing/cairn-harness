@@ -12,11 +12,24 @@ function eventState() {
 export function subscribeToProjectEvents(projects: Project[], listener: Listener) {
   const current = eventState();
   current.listeners.add(listener);
-  for (const root of new Set(projects.map((project) => project.root))) {
+  for (const project of projects) {
+    const root = project.root;
     if (current.watchers.has(root)) continue;
     try {
-      current.watchers.set(root, watch(root, { recursive: true }, emit));
+      current.watchers.set(root, watch(root, { recursive: true }, (_event, file) => {
+        if (relevant(String(file || ""), project.workDir)) emit();
+      }));
     } catch {}
+  }
+
+  function relevant(file: string, workDir?: string) {
+    const normalized = file.replaceAll("\\", "/");
+    const database = normalized === ".cairn-harness/harness.db"
+      || normalized === ".cairn-harness/harness.db-wal";
+    return normalized === "project.json"
+      || normalized.startsWith(`${workDir || "work-items"}/`)
+      || normalized.startsWith("todos/")
+      || database;
   }
   return () => current.listeners.delete(listener);
 }

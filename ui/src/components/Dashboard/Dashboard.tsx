@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import dynamic from "next/dynamic";
 import useSWR from "swr";
 import { Activity as ActivityIcon, Boxes, Layers3 } from "lucide-react";
 import type { Agent, Project, QueueItem } from "@/lib/types";
@@ -23,13 +22,10 @@ import { ProjectHeader } from "../ProjectHeader/ProjectHeader";
 import { ProjectColorSettings } from "../ProjectColorSettings/ProjectColorSettings";
 import { ProjectSidebar } from "../ProjectSidebar/ProjectSidebar";
 import { TaskList } from "../TaskList/TaskList";
+import { TaskEditor } from "../TaskEditor/TaskEditor";
 import styles from "./Dashboard.module.css";
 
 const fetcher = (url: string) => fetch(url).then((response) => response.json());
-const TaskEditor = dynamic(() => import("../TaskEditor/TaskEditor").then((module) => module.TaskEditor), {
-  ssr: false,
-  loading: () => <div className={styles.editorLoading}>Opening editor</div>,
-});
 interface ChatSelection { agentId: string; focusId?: string; }
 interface EditorSelection { kind: "draft" | "document"; item: QueueItem; }
 

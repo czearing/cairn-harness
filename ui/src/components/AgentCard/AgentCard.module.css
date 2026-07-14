@@ -1,5 +1,5 @@
-.card { position: relative; min-height: 150px; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-1); transition: border-color 140ms ease, transform 140ms ease, background 140ms ease; }
-.card:hover { border-color: var(--border-strong); background: var(--surface-hover); transform: translateY(-1px); }
+.card { position: relative; min-height: 150px; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-1); transition: border-color 140ms ease, background 140ms ease; }
+.card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .hit { position: absolute; inset: 0; z-index: 1; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
 .top, .footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .top { position: relative; }
