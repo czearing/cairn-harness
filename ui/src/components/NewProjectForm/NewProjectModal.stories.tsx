@@ -4,7 +4,7 @@ import { NewProjectForm } from "./NewProjectForm";
 
 function Experience() {
   return <Modal title="New project" open onClose={() => undefined}>
-    <NewProjectForm workspaceRoot="C:\\Users\\caleb\\Cairn Workspaces" onCreate={async () => undefined} />
+    <NewProjectForm workspaceRoot="C:\\Users\\caleb\\Cairn Workspaces" onBrowse={async () => "C:\\Users\\caleb\\Projects"} onCreate={async () => undefined} />
   </Modal>;
 }
 

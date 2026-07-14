@@ -4,10 +4,14 @@
 .sectionTitle { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 11px; }
 .sectionTitle h2 { margin: 0; font-size: 12px; font-weight: 600; }
 .sectionTitle span { color: var(--text-subtle); font-size: 10px; }
+.sectionTitle > div { display: flex; align-items: center; gap: 9px; }
+.sectionTitle button, .emptyAgents button { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 10px; cursor: pointer; }
+.sectionTitle button:hover, .emptyAgents button:hover { border-color: var(--border-strong); background: var(--surface-hover); color: var(--text); }
 .agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .emptyAgents { display: grid; gap: 4px; padding: 18px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-1); }
 .emptyAgents strong { font-size: 12px; }
 .emptyAgents span { color: var(--text-muted); font-size: 11px; }
+.emptyAgents button { width: fit-content; margin-top: 8px; min-height: 32px; background: var(--accent-soft); color: var(--accent); }
 .workGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 26px; }
 .workGrid:has([aria-label="Task editor"]) > section:first-child { grid-column: 1 / -1; }
 .blank { padding: 24px 0; color: var(--text-subtle); font-size: 11px; text-align: center; }

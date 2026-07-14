@@ -52,6 +52,21 @@ export function updateAgentPrompt(projectId: string, agentId: string, prompt: st
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 }
 
+export function addAgent(projectId: string, name: string, description: string, prompt: string) {
+  const configPath = getProjectConfigPath(projectId);
+  if (!configPath) throw new Error("Project config not found");
+  const id = slug(name);
+  if (!id || !description.trim() || !prompt.trim()) throw new Error("Name, role, and instructions are required");
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as { leader?: string; roles?: Role[] };
+  const roles = config.roles || [];
+  if (roles.some((role) => role.name === id)) throw new Error("An agent with this name already exists");
+  config.roles = [...roles, { name: id, description: description.trim(), prompt: prompt.trim() }];
+  if (!config.leader) config.leader = id;
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  restartProject(projectId);
+  return id;
+}
+
 export function deleteAgent(projectId: string, agentId: string) {
   const configPath = getProjectConfigPath(projectId);
   if (!configPath) throw new Error("Project config not found");

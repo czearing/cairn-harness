@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CirclePause, CirclePlay, Palette, Trash2 } from "lucide-react";
 import type { Project } from "@/lib/types";
@@ -22,6 +22,7 @@ export function ProjectContextMenu({ project, x, y, color, avatar, onAppearance,
   const root = useRef<HTMLDivElement>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmation, setConfirmation] = useState("");
+  const [position, setPosition] = useState({ left: x, top: y });
   useEffect(() => {
     root.current?.querySelector<HTMLElement>("button, input")?.focus();
     function dismiss(event: PointerEvent | KeyboardEvent) {
@@ -36,7 +37,14 @@ export function ProjectContextMenu({ project, x, y, color, avatar, onAppearance,
       document.removeEventListener("keydown", dismiss);
     };
   }, [onClose]);
-  const position = { left: Math.min(x, window.innerWidth - 252), top: Math.min(y, window.innerHeight - 340) };
+  useLayoutEffect(() => {
+    const rect = root.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPosition({
+      left: Math.max(8, Math.min(x, window.innerWidth - rect.width - 8)),
+      top: Math.max(8, Math.min(y, window.innerHeight - rect.height - 8)),
+    });
+  }, [confirming, x, y]);
   return createPortal(
     <div ref={root} role="menu" aria-label={`${project.name} project actions`} className={styles.menu} style={position}>
       {!confirming ? <>

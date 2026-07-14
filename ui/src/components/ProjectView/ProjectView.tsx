@@ -1,4 +1,4 @@
-import { Boxes, Layers3 } from "lucide-react";
+import { Boxes, Layers3, UserPlus } from "lucide-react";
 import type { Agent, Project, QueueItem } from "@/lib/types";
 import { agentColor } from "@/lib/colors";
 import { AgentCard } from "../AgentCard/AgentCard";
@@ -17,15 +17,16 @@ interface Props {
   onTask: (item: QueueItem) => void; onTaskCancel: (item: QueueItem) => Promise<void>;
   onTaskDelete: (item: QueueItem) => Promise<void>; onTodo: (item: QueueItem) => void;
   onTodoDelete: (item: QueueItem) => Promise<void>; onAddWork: () => void;
+  onAddAgent: () => void;
 }
 
-export function ProjectView({ project, colors, avatars, editor, promptEditor, onAgent, onPrefetch, onAppearance, onPrompt, onClearContext, onDelete, onTask, onTaskCancel, onTaskDelete, onTodo, onTodoDelete, onAddWork }: Props) {
+export function ProjectView({ project, colors, avatars, editor, promptEditor, onAgent, onPrefetch, onAppearance, onPrompt, onClearContext, onDelete, onTask, onTaskCancel, onTaskDelete, onTodo, onTodoDelete, onAddWork, onAddAgent }: Props) {
   const active = project.agents.filter((agent) => agent.status === "working").length;
   return <main className={styles.main}>
     <ProjectHeader name={project.name} root={shortPath(project.root)} active={active} releases={project.releases} onAdd={onAddWork} />
-    <section className={styles.section}><div className={styles.sectionTitle}><h2>Agents</h2><span>{project.agents.length} configured</span></div>
+    <section className={styles.section}><div className={styles.sectionTitle}><h2>Agents</h2><div><span>{project.agents.length} configured</span><button onClick={onAddAgent}><UserPlus size={13} />New agent</button></div></div>
       {project.agents.length ? <div className={styles.agents}>{project.agents.map((agent) => <AgentCard key={agent.id} agent={agent} color={agentColor(agent.id, colors)} avatar={avatars[agent.id]} onClick={() => onAgent(agent)} onPrefetch={() => onPrefetch(agent)} onAppearance={() => onAppearance(agent)} onPrompt={() => onPrompt(agent)} onClearContext={() => onClearContext(agent)} onDelete={() => onDelete(agent)} />)}</div> :
-        <div className={styles.emptyAgents}><strong>Your workspace is ready</strong><span>Agents will be created and configured from this project page.</span></div>}
+        <div className={styles.emptyAgents}><strong>Build your team</strong><span>Create your first agent to start working in this workspace.</span><button onClick={onAddAgent}><UserPlus size={14} />Create first agent</button></div>}
       {promptEditor}
     </section>
     <div className={styles.workGrid}>

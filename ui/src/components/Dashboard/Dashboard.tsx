@@ -1,5 +1,4 @@
 "use client";
-
 import { useState } from "react";
 import useSWR from "swr";
 import type { HealthState, Project, QueueItem } from "@/lib/types";
@@ -15,19 +14,14 @@ import { AgentPromptEditor } from "../AgentPromptEditor/AgentPromptEditor";
 import { ActivityRail } from "../ActivityRail/ActivityRail";
 import { ConversationDrawer } from "../ConversationDrawer/ConversationDrawer";
 import { EmptyProject } from "../EmptyProject/EmptyProject";
-import { NewProjectForm } from "../NewProjectForm/NewProjectForm";
-import type { ProjectDraft } from "../NewProjectForm/NewProjectForm";
-import { Modal } from "../Modal/Modal";
+import { NewAgentDialog, NewProjectDialog, type AgentDraft, type ProjectDraft } from "../CreationDialogs/CreationDialogs";
 import { ProjectSidebar } from "../ProjectSidebar/ProjectSidebar";
 import { TaskEditor } from "../TaskEditor/TaskEditor";
 import { SystemStatus } from "../SystemStatus/SystemStatus";
 import { ProjectView } from "../ProjectView/ProjectView";
 import styles from "./Dashboard.module.css";
-
 const fetcher = (url: string) => fetch(url).then((response) => response.json());
-interface ChatSelection { agentId: string; focusId?: string; }
-interface EditorSelection { kind: "draft" | "document"; item: QueueItem; }
-
+interface ChatSelection { agentId: string; focusId?: string; } interface EditorSelection { kind: "draft" | "document"; item: QueueItem; }
 export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects: Project[]; workspaceRoot: string }) {
   const { data = initialProjects, mutate } = useSWR<Project[]>("/api/projects", fetcher, { fallbackData: initialProjects });
   const { data: health = healthy, mutate: mutateHealth } = useSWR<HealthState>("/api/health", fetcher, { fallbackData: healthy });
@@ -35,6 +29,7 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
   const [chat, setChat] = useState<ChatSelection>();
   const [editing, setEditing] = useState<EditorSelection>();
   const [addingProject, setAddingProject] = useState(false);
+  const [addingAgent, setAddingAgent] = useState(false);
   const [appearanceId, setAppearanceId] = useState<string>();
   const [projectAppearanceId, setProjectAppearanceId] = useState<string>();
   const [showHealth, setShowHealth] = useState(false);
@@ -62,12 +57,17 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
   }
   async function createProject(draft: ProjectDraft) {
     const result = await post("/api/projects", { name: draft.name, workspace: draft.workspace });
-    setAddingProject(false);
     if (result.id) {
       setProjectColors({ ...projectColors, [result.id]: draft.color });
       if (draft.avatar) setProjectAvatars({ ...projectAvatars, [result.id]: draft.avatar });
       setSelectedId(result.id);
     }
+  }
+  async function browseWorkspace(initial: string) {
+    const response = await fetch("/api/folders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ initial }) });
+    const data = await response.json() as { path?: string; error?: string };
+    if (!response.ok) throw new Error(data.error || "Folder selection failed");
+    return data.path;
   }
   async function write(url: string, method: string, body?: object) {
     const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
@@ -152,15 +152,20 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
           await mutate();
         }}
         onAddWork={() => setEditing({ kind: "draft", item: newDraft() })}
+        onAddAgent={() => setAddingAgent(true)}
       /> : <EmptyProject onCreate={() => setAddingProject(true)} />}
       {project && <ActivityRail project={project} cutoff={activityCutoffs[project.id]} onClear={() => setActivityCutoffs({ ...activityCutoffs, [project.id]: new Date().toISOString() })} onOpen={(agent, focusId) => setChat({ agentId: agent.id, focusId })} />}
 
       <ActionDrawer title={chatAgent ? `Conversation with ${chatAgent.id}` : ""} open={Boolean(chatAgent)} wide onClose={() => setChat(undefined)}>
         {chat && chatAgent && project && <ConversationDrawer key={`${project.id}:${chatAgent.id}:${chat.focusId || "latest"}`} projectId={project.id} agent={chatAgent} colors={colors} avatars={avatars} focusId={chat.focusId} onProjectMutate={mutate} />}
       </ActionDrawer>
-      <Modal title="New project" open={addingProject} onClose={() => setAddingProject(false)}>
-        <NewProjectForm workspaceRoot={workspaceRoot} onCreate={createProject} onCancel={() => setAddingProject(false)} />
-      </Modal>
+      <NewProjectDialog open={addingProject} workspaceRoot={workspaceRoot} onBrowse={browseWorkspace} onCreate={createProject} onClose={() => setAddingProject(false)} />
+      <NewAgentDialog open={addingAgent} project={project} onClose={() => setAddingAgent(false)} onCreate={async (draft: AgentDraft) => {
+        if (!project) return;
+        await post(`/api/projects/${project.id}/agents`, draft);
+        setAddingAgent(false);
+        await mutate();
+      }} />
       <ActionDrawer title={appearanceAgent ? `Appearance · ${appearanceAgent.id}` : ""} open={Boolean(appearanceAgent)} onClose={() => setAppearanceId(undefined)}>
         {appearanceAgent && <IdentityEditor name={appearanceAgent.id} color={agentColor(appearanceAgent.id, colors)} avatar={avatars[appearanceAgent.id]} onColor={(color) => setColors({ ...colors, [appearanceAgent.id]: color })} onAvatar={(avatar) => {
           const next = { ...avatars };
