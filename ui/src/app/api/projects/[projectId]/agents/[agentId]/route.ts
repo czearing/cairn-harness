@@ -1,4 +1,4 @@
-import { clearAgentContext, deleteAgent, setProjectLeader, updateAgentPrompt } from "@/server/mutations";
+import { clearAgentContext, deleteAgent, pauseAgent, resumeAgent, setProjectLeader, updateAgentPrompt } from "@/server/mutations";
 import { restartProject } from "@/server/supervisor";
 
 export const runtime = "nodejs";
@@ -33,6 +33,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pr
       setImmediate(() => {
         try { restartProject(projectId); } catch (error) { console.error("Could not restart project after leader change", error); }
       });
+    } else if (data.action === "pause") {
+      pauseAgent(projectId, agentId);
+    } else if (data.action === "resume") {
+      resumeAgent(projectId, agentId);
     } else {
       clearAgentContext(projectId, agentId);
     }

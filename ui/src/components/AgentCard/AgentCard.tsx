@@ -6,9 +6,9 @@ import type { Agent } from "@/lib/types";
 import { StatusPill } from "../StatusPill/StatusPill";
 import styles from "./AgentCard.module.css";
 
-interface Props { agent: Agent; color?: string; avatar?: string; onClick?: () => void; onPrefetch?: () => void; onAppearance?: () => void; onPrompt?: () => void; onMakeLeader?: () => void; onClearContext?: () => void; onDelete?: () => void; }
+interface Props { agent: Agent; color?: string; avatar?: string; onClick?: () => void; onPrefetch?: () => void; onAppearance?: () => void; onPrompt?: () => void; onMakeLeader?: () => void; onPauseToggle?: () => void; onClearContext?: () => void; onDelete?: () => void; }
 
-export function AgentCard({ agent, color, avatar, onClick, onPrefetch, onAppearance, onPrompt, onMakeLeader, onClearContext, onDelete }: Props) {
+export function AgentCard({ agent, color, avatar, onClick, onPrefetch, onAppearance, onPrompt, onMakeLeader, onPauseToggle, onClearContext, onDelete }: Props) {
   const [menu, setMenu] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -68,6 +68,7 @@ export function AgentCard({ agent, color, avatar, onClick, onPrefetch, onAppeara
           <button role="menuitem" onClick={() => { setMenu(false); onAppearance?.(); }}>Appearance</button>
           <button role="menuitem" onClick={() => { setMenu(false); onPrompt?.(); }}>Edit prompt</button>
           {agent.isLeader ? <button role="menuitem" disabled>Project lead</button> : <button role="menuitem" onClick={() => { setMenu(false); onMakeLeader?.(); }}>Make project lead</button>}
+          <button role="menuitem" onClick={() => { setMenu(false); onPauseToggle?.(); }}>{agent.status === "paused" ? "Resume agent" : "Pause agent"}</button>
           {!confirmClear
             ? <button role="menuitem" onClick={() => setConfirmClear(true)}>Clear context</button>
             : <button role="menuitem" onClick={() => { setMenu(false); onClearContext?.(); }}>Confirm clear context</button>}

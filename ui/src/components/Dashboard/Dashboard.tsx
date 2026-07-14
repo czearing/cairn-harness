@@ -14,11 +14,12 @@ import { AgentPromptEditor } from "../AgentPromptEditor/AgentPromptEditor";
 import { ActivityRail } from "../ActivityRail/ActivityRail";
 import { ConversationDrawer } from "../ConversationDrawer/ConversationDrawer";
 import { EmptyProject } from "../EmptyProject/EmptyProject";
-import { NewAgentDialog, NewProjectDialog, type AgentDraft, type ProjectDraft } from "../CreationDialogs/CreationDialogs";
+import { AutomationDialog, NewAgentDialog, NewProjectDialog, type AgentDraft, type ProjectDraft } from "../CreationDialogs/CreationDialogs";
 import { ProjectSidebar } from "../ProjectSidebar/ProjectSidebar";
 import { TaskEditor } from "../TaskEditor/TaskEditor";
 import { SystemStatus } from "../SystemStatus/SystemStatus";
 import { ProjectView } from "../ProjectView/ProjectView";
+import { postJson, writeJson } from "./dashboard-requests";
 import styles from "./Dashboard.module.css";
 const fetcher = (url: string) => fetch(url).then((response) => response.json());
 interface ChatSelection { agentId: string; focusId?: string; } interface EditorSelection { kind: "draft" | "document"; item: QueueItem; }
@@ -30,6 +31,7 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
   const [editing, setEditing] = useState<EditorSelection>();
   const [addingProject, setAddingProject] = useState(false);
   const [addingAgent, setAddingAgent] = useState(false);
+  const [configuringAutomation, setConfiguringAutomation] = useState(false);
   const [appearanceId, setAppearanceId] = useState<string>();
   const [projectAppearanceId, setProjectAppearanceId] = useState<string>();
   const [showHealth, setShowHealth] = useState(false);
@@ -45,16 +47,7 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
   const appearanceProject = data.find((item) => item.id === projectAppearanceId);
   const promptAgent = project?.agents.find((agent) => agent.id === promptId);
   useProjectEvents(() => { void mutate(); void mutateHealth(); });
-
-  async function post(url: string, body: object) {
-    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({ error: "Request failed" })) as { error?: string };
-      throw new Error(data.error || "Request failed");
-    }
-    await mutate();
-    return response.json().catch(() => ({})) as Promise<{ id?: string }>;
-  }
+  const post = (url: string, body: object) => postJson(url, body, mutate);
   async function createProject(draft: ProjectDraft) {
     const result = await post("/api/projects", { name: draft.name, workspace: draft.workspace });
     if (result.id) {
@@ -69,13 +62,7 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
     if (!response.ok) throw new Error(data.error || "Folder selection failed");
     return data.path;
   }
-  async function write(url: string, method: string, body?: object) {
-    const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({ error: "Save failed" })) as { error?: string };
-      throw new Error(data.error || "Save failed");
-    }
-  }
+  const write = writeJson;
   async function sendDraft(id: string, body: string) {
     if (!project) return;
     await post(`/api/projects/${project.id}/work-items`, { body });
@@ -83,7 +70,6 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
     setEditing(undefined);
     await mutate();
   }
-
   return (
     <div className={styles.shell} data-app-shell>
       <ProjectSidebar
@@ -133,6 +119,10 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
           await write(`/api/projects/${project.id}/agents/${agent.id}`, "PATCH", { action: "make-leader" });
           await mutate();
         }}
+        onPauseToggle={async (agent) => {
+          await write(`/api/projects/${project.id}/agents/${agent.id}`, "PATCH", { action: agent.status === "paused" ? "resume" : "pause" });
+          await mutate();
+        }}
         onDelete={async (agent) => {
           await write(`/api/projects/${project.id}/agents/${agent.id}`, "DELETE");
           await mutate();
@@ -157,6 +147,7 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
         }}
         onAddWork={() => setEditing({ kind: "draft", item: newDraft() })}
         onAddAgent={() => setAddingAgent(true)}
+        onConfigureAutomation={() => setConfiguringAutomation(true)}
       /> : <EmptyProject onCreate={() => setAddingProject(true)} />}
       {project && <ActivityRail project={project} cutoff={activityCutoffs[project.id]} onClear={() => setActivityCutoffs({ ...activityCutoffs, [project.id]: new Date().toISOString() })} onOpen={(agent, focusId) => setChat({ agentId: agent.id, focusId })} />}
 
@@ -168,6 +159,12 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
         if (!project) return;
         await post(`/api/projects/${project.id}/agents`, draft);
         setAddingAgent(false);
+        await mutate();
+      }} />
+      <AutomationDialog open={configuringAutomation} project={project} onClose={() => setConfiguringAutomation(false)} onSave={async (producer, limit) => {
+        if (!project) return;
+        await write(`/api/projects/${project.id}/automation`, "PUT", { producer, limit });
+        setConfiguringAutomation(false);
         await mutate();
       }} />
       <ActionDrawer title={appearanceAgent ? `Appearance · ${appearanceAgent.id}` : ""} open={Boolean(appearanceAgent)} onClose={() => setAppearanceId(undefined)}>

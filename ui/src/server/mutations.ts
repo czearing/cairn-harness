@@ -100,6 +100,47 @@ export function setProjectLeader(projectId: string, agentId: string) {
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 }
 
+export function pauseAgent(projectId: string, agentId: string) {
+  const project = requiredProject(projectId);
+  const db = new DatabaseSync(path.join(project.root, ".cairn-harness", "harness.db"));
+  const now = new Date().toISOString();
+  const claimed = db.prepare("SELECT id,sender,topic,body FROM messages WHERE recipient=? AND status='claimed'").all(agentId) as { id: string; sender: string; topic: string; body: string }[];
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const message of claimed) {
+      db.prepare("UPDATE messages SET status='cancelled',claimed_at=NULL,completed_at=?,error='Paused by operator' WHERE id=?").run(now, message.id);
+      db.prepare("INSERT INTO messages(id,sender,recipient,topic,body,status,created_at) VALUES(?,?,?,?,?,'deferred',?)")
+        .run(`${message.id}:resume:${randomUUID()}`, message.sender, agentId, message.topic, message.body, now);
+    }
+    db.prepare("UPDATE agents SET status='paused',current_topic=NULL,updated_at=? WHERE agent_id=?").run(now, agentId);
+    notifyLeader(db, project, agentId, "agent-paused", `${agentId} was paused by the operator. Active work was deferred and must not continue until the agent is resumed.`, now);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  } finally {
+    db.close();
+  }
+}
+
+export function resumeAgent(projectId: string, agentId: string) {
+  const project = requiredProject(projectId);
+  const db = new DatabaseSync(path.join(project.root, ".cairn-harness", "harness.db"));
+  const now = new Date().toISOString();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE agents SET status='idle',current_topic=NULL,updated_at=? WHERE agent_id=?").run(now, agentId);
+    db.prepare("UPDATE messages SET status='pending' WHERE recipient=? AND status='deferred'").run(agentId);
+    notifyLeader(db, project, agentId, "agent-resumed", `${agentId} was resumed by the operator. Continue its deferred work when appropriate.`, now);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  } finally {
+    db.close();
+  }
+}
+
 export function saveDocument(projectId: string, relative: string, body: string) {
   const project = requiredProject(projectId);
   const root = path.resolve(project.root);
@@ -147,4 +188,11 @@ function slug(value: string) {
 function safeId(value: string) {
   if (!/^[a-zA-Z0-9-]+$/.test(value)) throw new Error("Invalid draft id");
   return value;
+}
+
+function notifyLeader(db: DatabaseSync, project: ReturnType<typeof requiredProject>, agentId: string, topic: string, body: string, now: string) {
+  const leader = project.agents.find((agent) => agent.isLeader)?.id;
+  if (!leader || leader === agentId) return;
+  db.prepare("INSERT INTO messages(id,sender,recipient,topic,body,status,created_at) VALUES(?,?,?,?,?,'pending',?)")
+    .run(randomUUID(), "dashboard", leader, topic, body, now);
 }

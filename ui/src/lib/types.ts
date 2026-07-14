@@ -65,6 +65,9 @@ export interface Project {
   conversations?: Record<string, ChatMessage[]>;
   workDir?: string;
   paused?: boolean;
+  producerId?: string;
+  producerLimit?: number;
+  generatedWorkCount?: number;
   releases: number;
   workItemCount?: number;
   activeWorkCount?: number;

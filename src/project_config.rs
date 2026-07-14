@@ -59,7 +59,7 @@ impl ProjectConfig {
 
     fn validate(&self) -> Result<()> {
         if self.roles.is_empty() {
-            if self.leader.is_some() || self.producer.is_some() {
+            if self.leader.is_some() || self.producer.is_some() || self.producer_limit.is_some() {
                 bail!("agentless projects cannot name a leader or producer");
             }
             return Ok(());
@@ -77,6 +77,12 @@ impl ProjectConfig {
                 .iter()
                 .find(|role| role.name == producer.as_str())
                 .context("producer must name a configured role")?;
+        }
+        if self.producer_limit.is_some_and(|limit| limit == 0) {
+            bail!("producer limit must be greater than zero");
+        }
+        if self.producer_limit.is_some() && self.producer.is_none() {
+            bail!("producer limit requires a producer");
         }
         for role in &self.roles {
             if role.description.is_empty() || role.prompt.is_empty() {

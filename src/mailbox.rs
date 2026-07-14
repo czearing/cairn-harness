@@ -37,10 +37,12 @@ impl Store {
         let row: Option<(String, String, String, String, String, u32)> = sqlx::query_as(
             "UPDATE messages SET status='claimed',claimed_at=?,attempts=attempts+1,error=NULL
              WHERE id=(SELECT id FROM messages WHERE recipient=? AND status='pending'
+             AND EXISTS(SELECT 1 FROM agents WHERE agent_id=? AND status!='paused')
              ORDER BY CASE WHEN sender IN ('dashboard','human') THEN 0 ELSE 1 END, created_at LIMIT 1)
              RETURNING id,sender,recipient,topic,body,attempts",
         )
         .bind(Utc::now().to_rfc3339())
+        .bind(agent)
         .bind(agent)
         .fetch_optional(&self.pool)
         .await?;
@@ -84,6 +86,15 @@ impl Store {
         let (count,): (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM messages WHERE id=? AND status='cancelled'")
                 .bind(id)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(count > 0)
+    }
+
+    pub async fn is_agent_paused(&self, agent: &str) -> Result<bool> {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM agents WHERE agent_id=? AND status='paused'")
+                .bind(agent)
                 .fetch_one(&self.pool)
                 .await?;
         Ok(count > 0)
@@ -159,6 +170,15 @@ impl Store {
         Ok(count)
     }
 
+    pub async fn automatic_seed_count(&self) -> Result<i64> {
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM messages WHERE sender='harness' AND topic IN ('create-work-item','create-idea')",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
+    }
+
     pub async fn completed_message_count(&self) -> Result<i64> {
         self.message_count("completed").await
     }
@@ -172,43 +192,4 @@ impl Store {
 }
 
 #[cfg(test)]
-mod tests {
-    use tempfile::tempdir;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn claims_direct_user_messages_before_internal_backlog() {
-        let root = tempdir().unwrap();
-        let store = Store::open(&root.path().join("harness.db")).await.unwrap();
-        store
-            .enqueue("ui-lead", "reviewer", "review", "older internal work")
-            .await
-            .unwrap();
-        store
-            .enqueue("dashboard", "reviewer", "dashboard-message", "user request")
-            .await
-            .unwrap();
-
-        let message = store.claim("reviewer").await.unwrap().unwrap();
-
-        assert_eq!(message.sender, "dashboard");
-        assert_eq!(message.body, "user request");
-    }
-
-    #[tokio::test]
-    async fn reports_cancelled_claims_for_late_output_suppression() {
-        let root = tempdir().unwrap();
-        let store = Store::open(&root.path().join("harness.db")).await.unwrap();
-        store
-            .enqueue_keyed("task:child", "lead", "builder", "work", "build")
-            .await
-            .unwrap();
-        sqlx::query("UPDATE messages SET status='cancelled' WHERE id='task:child'")
-            .execute(&store.pool)
-            .await
-            .unwrap();
-
-        assert!(store.is_cancelled("task:child").await.unwrap());
-    }
-}
+mod tests;

@@ -9,6 +9,7 @@ pub struct ProjectConfig {
     pub root: PathBuf,
     pub leader: Option<String>,
     pub producer: Option<String>,
+    pub producer_limit: Option<u64>,
     pub work_dir: Option<PathBuf>,
     #[serde(default = "default_todo_dir")]
     pub todo_dir: PathBuf,

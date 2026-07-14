@@ -115,6 +115,31 @@ async fn bounded_watch_runs_one_complete_cycle() {
 }
 
 #[tokio::test]
+async fn producer_limit_stops_additional_automatic_work() {
+    let temp = tempdir().unwrap();
+    let mut config = poem_config(temp.path());
+    config.producer_limit = Some(1);
+    let store = Store::open(&config.database_path()).await.unwrap();
+    let harness = Harness::new(
+        config,
+        store,
+        Arc::new(PoemRunner {
+            ideas: AtomicUsize::new(0),
+        }),
+    );
+    harness.bootstrap().await.unwrap();
+
+    assert!(harness.replenish().await.unwrap());
+    let seed = harness.store().claim("author").await.unwrap().unwrap();
+    harness
+        .store()
+        .finish(&seed.id, "completed", None)
+        .await
+        .unwrap();
+    assert!(!harness.replenish().await.unwrap());
+}
+
+#[tokio::test]
 async fn bounded_watch_fails_on_duplicate_release_stall() {
     let temp = tempdir().unwrap();
     let config = poem_config(temp.path());

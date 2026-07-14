@@ -7,6 +7,11 @@ impl Harness {
         let Some(producer) = &self.config.producer else {
             return Ok(false);
         };
+        if let Some(limit) = self.config.producer_limit
+            && self.store.automatic_seed_count().await? >= limit as i64
+        {
+            return Ok(false);
+        }
         if self.store.open_message_count().await? != 0 || self.store.open_work_count().await? != 0 {
             return Ok(false);
         }

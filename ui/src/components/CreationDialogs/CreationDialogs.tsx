@@ -1,4 +1,5 @@
 import type { Project } from "@/lib/types";
+import { AutomationForm } from "../AutomationForm/AutomationForm";
 import { Modal } from "../Modal/Modal";
 import { NewAgentForm, type AgentDraft } from "../NewAgentForm/NewAgentForm";
 import { NewProjectForm, type ProjectDraft } from "../NewProjectForm/NewProjectForm";
@@ -18,5 +19,13 @@ export function NewAgentDialog({ open, project, onCreate, onClose }: {
 }) {
   return <Modal title="New agent" open={open} onClose={onClose}>
     {project && <NewAgentForm first={!project.agents.length} onCancel={onClose} onCreate={onCreate} />}
+  </Modal>;
+}
+
+export function AutomationDialog({ open, project, onSave, onClose }: {
+  open: boolean; project?: Project; onSave: (producer?: string, limit?: number) => Promise<void>; onClose: () => void;
+}) {
+  return <Modal title="Automatic work" open={open} onClose={onClose}>
+    {project && <AutomationForm project={project} onCancel={onClose} onSave={onSave} />}
   </Modal>;
 }

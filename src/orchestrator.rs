@@ -66,6 +66,9 @@ impl Harness {
             .await?;
         for worker in self.config.workers() {
             let state = self.store.register(&worker).await?;
+            if state.status == "paused" {
+                continue;
+            }
             if let Some(session_id) = self
                 .runner
                 .warm(self.config.root.clone(), worker, state.session_id)

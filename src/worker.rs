@@ -82,6 +82,23 @@ async fn process(ctx: &WorkerContext, message: Message) -> Result<()> {
     let result = run_with_lease(ctx, &message.id, request).await;
     drop(permit);
     let completed_at = Utc::now().to_rfc3339();
+    if ctx.store.is_agent_paused(&ctx.worker.id).await? {
+        if let Ok(output) = &result {
+            turn::record(
+                ctx,
+                &message,
+                &session_id,
+                &prompt,
+                output,
+                "paused",
+                &started_at,
+                &completed_at,
+            )
+            .await?;
+        }
+        ctx.store.set_state(&ctx.worker.id, "paused", None).await?;
+        return Ok(());
+    }
     if ctx.store.is_cancelled(&message.id).await? {
         if let Ok(output) = &result {
             turn::record(

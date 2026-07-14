@@ -5,7 +5,7 @@ import type { Activity, Agent, Project, QueueItem } from "@/lib/types";
 import { readConversationPage } from "./chat";
 import type { ConversationPage } from "@/lib/types";
 
-interface Config { name: string; root: string; leader?: string; producer?: string; work_dir?: string; roles: { name: string; description: string; prompt: string }[]; }
+interface Config { name: string; root: string; leader?: string; producer?: string; producer_limit?: number; work_dir?: string; roles: { name: string; description: string; prompt: string }[]; }
 
 export function getProjects(): Project[] {
   return configPaths().map(readProject).filter((project): project is Project => Boolean(project));
@@ -37,7 +37,7 @@ function readProject(configPath: string): Project | null {
   const id = path.basename(path.dirname(configPath));
   const paused = existsSync(path.join(path.dirname(configPath), ".cairn-paused"));
   const base: Project = {
-    id, name: config.name, root, workDir: config.work_dir, paused,
+    id, name: config.name, root, workDir: config.work_dir, paused, producerId: config.producer, producerLimit: config.producer_limit,
     agents: config.roles.map((role) => roleAgent(role, config.leader, config.producer)).sort(leaderFirst), workItems: [], todos: [],
     activity: [], releases: 0, workItemCount: 0, activeWorkCount: 0,
     drafts: readDrafts(root),
@@ -64,8 +64,9 @@ function readProject(configPath: string): Project | null {
   const releases = safeCount(db, "SELECT COUNT(*) count FROM releases");
   const workItemCount = safeCount(db, "SELECT COUNT(*) count FROM work_items") + queuedWork.length;
   const activeWorkCount = safeCount(db, "SELECT COUNT(*) count FROM work_items WHERE status NOT IN ('done','completed','released','cancelled')") + queuedWork.length;
+  const generatedWorkCount = safeCount(db, "SELECT COUNT(*) count FROM messages WHERE sender='harness' AND topic IN ('create-work-item','create-idea')");
   db.close();
-  return { ...base, agents, activity, workItems, todos, releases, workItemCount, activeWorkCount };
+  return { ...base, agents, activity, workItems, todos, releases, workItemCount, activeWorkCount, generatedWorkCount };
 }
 
 function isComplete(status: string) {
