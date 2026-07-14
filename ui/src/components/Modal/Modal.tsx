@@ -37,7 +37,7 @@ export function Modal({ title, open, onClose, children }: { title: string; open:
   return createPortal(
     <div className={styles.backdrop} onMouseDown={onClose}>
       <div ref={dialog} className={styles.modal} role="dialog" aria-modal="true" aria-label={title} onKeyDown={keyDown} onMouseDown={(event) => event.stopPropagation()}>
-        <header><div><span>New project</span><h2>{title}</h2></div><button aria-label="Close" onClick={onClose}><X size={16} /></button></header>
+        <header><h2>{title}</h2><button aria-label="Close" onClick={onClose}><X size={16} /></button></header>
         {children}
       </div>
     </div>,

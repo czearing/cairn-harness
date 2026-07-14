@@ -158,8 +158,8 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
       <ActionDrawer title={chatAgent ? `Conversation with ${chatAgent.id}` : ""} open={Boolean(chatAgent)} wide onClose={() => setChat(undefined)}>
         {chat && chatAgent && project && <ConversationDrawer key={`${project.id}:${chatAgent.id}:${chat.focusId || "latest"}`} projectId={project.id} agent={chatAgent} colors={colors} avatars={avatars} focusId={chat.focusId} onProjectMutate={mutate} />}
       </ActionDrawer>
-      <Modal title="Set up your workspace" open={addingProject} onClose={() => setAddingProject(false)}>
-        <NewProjectForm workspaceRoot={workspaceRoot} onCreate={createProject} />
+      <Modal title="New project" open={addingProject} onClose={() => setAddingProject(false)}>
+        <NewProjectForm workspaceRoot={workspaceRoot} onCreate={createProject} onCancel={() => setAddingProject(false)} />
       </Modal>
       <ActionDrawer title={appearanceAgent ? `Appearance · ${appearanceAgent.id}` : ""} open={Boolean(appearanceAgent)} onClose={() => setAppearanceId(undefined)}>
         {appearanceAgent && <IdentityEditor name={appearanceAgent.id} color={agentColor(appearanceAgent.id, colors)} avatar={avatars[appearanceAgent.id]} onColor={(color) => setColors({ ...colors, [appearanceAgent.id]: color })} onAvatar={(avatar) => {
