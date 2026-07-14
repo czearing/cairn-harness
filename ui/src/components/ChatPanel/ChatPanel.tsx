@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import type { Agent, ChatMessage } from "@/lib/types";
@@ -7,6 +6,7 @@ import { agentColor } from "@/lib/colors";
 import { MessageBody } from "../MessageBody/MessageBody";
 import { MessageComposer } from "../MessageComposer/MessageComposer";
 import { StatusPill } from "../StatusPill/StatusPill";
+import { formatTime, normalize, scrollBottom } from "./chat-utils";
 import styles from "./ChatPanel.module.css";
 
 interface Props {
@@ -30,6 +30,7 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
   const firstIndex = 1_000_000 - olderCount;
   const focusIndex = focusId ? messages.findIndex((message) => message.id === focusId) : -1;
   const hasMessages = messages.length > 0;
+  const distinctRole = normalize(agent.role) !== normalize(agent.id);
   useEffect(() => {
     if (!focusId || focusedTarget.current === focusId) return;
     if (focusIndex < 0) return;
@@ -107,13 +108,13 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
   function itemContent(_index: number, message: ChatMessage) {
     return (
     <div className={`${styles.row} ${isUser(message) ? styles.rowOwn : ""}`}>
-      <Bubble message={message} agent={agent.id} colors={colors} avatar={avatars[message.sender]} focused={message.id === focusId} />
+      <Bubble message={message} colors={colors} avatar={avatars[message.sender]} focused={message.id === focusId} />
     </div>
     );
   }
   return (
     <div className={styles.panel}>
-      <header><div><h3>{agent.id}</h3><p>{agent.role}</p></div><StatusPill status={agent.status} /></header>
+      <header><div><h3>{agent.id}</h3>{distinctRole && <p>{agent.role}</p>}</div><StatusPill status={agent.status} /></header>
       {loading && !messages.length ? <div className={styles.empty}>Loading conversation</div> :
         <Virtuoso
           ref={list}
@@ -158,7 +159,7 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
   );
 }
 
-function Bubble({ message, agent, colors, avatar, focused }: { message: ChatMessage; agent: string; colors: Record<string, string>; avatar?: string; focused: boolean }) {
+function Bubble({ message, colors, avatar, focused }: { message: ChatMessage; colors: Record<string, string>; avatar?: string; focused: boolean }) {
   if (message.kind === "tool") return <ToolBubble message={message} focused={focused} />;
   if (message.sender === "work-items" || message.sender === "todo-folder") {
     return <AssignmentBubble message={message} focused={focused} />;
@@ -168,9 +169,8 @@ function Bubble({ message, agent, colors, avatar, focused }: { message: ChatMess
   const identity = { "--sender-color": user ? "var(--accent)" : agentColor(message.sender, colors) } as CSSProperties;
   return (
     <article style={identity} tabIndex={-1} data-chat-id={message.id} className={`${styles.message} ${user ? styles.own : ""} ${message.kind !== "message" && message.kind !== "assistant" ? styles.event : ""} ${focused ? styles.focused : ""}`}>
-      <div className={styles.meta}><span className={styles.avatar} style={avatar ? { backgroundImage: `url("${avatar}")` } : undefined}>{!avatar && sender.slice(0, 2).toUpperCase()}</span><strong>{sender}</strong><span>{message.title || `to ${message.recipient === agent ? agent : message.recipient}`}</span><time>{formatTime(message.timestamp)}</time></div>
+      <div className={styles.meta}><span className={styles.avatar} style={avatar ? { backgroundImage: `url("${avatar}")` } : undefined}>{!avatar && sender.slice(0, 2).toUpperCase()}</span><strong>{sender}</strong><time>{formatTime(message.timestamp)}</time></div>
       <MessageBody message={message} />
-      <span className={styles.state}>{message.status}</span>
     </article>
   );
 }
@@ -180,7 +180,6 @@ function AssignmentBubble({ message, focused }: { message: ChatMessage; focused:
     <article tabIndex={-1} data-chat-id={message.id} className={`${styles.assignment} ${focused ? styles.focused : ""}`}>
       <div className={styles.assignmentMeta}><span>to {message.recipient}</span><time>{formatTime(message.timestamp)}</time></div>
       <MessageBody message={message} />
-      <span className={styles.state}>{message.status}</span>
     </article>
   );
 }
@@ -195,10 +194,3 @@ function ToolBubble({ message, focused }: { message: ChatMessage; focused: boole
 }
 
 function isUser(message: ChatMessage) { return message.sender === "dashboard" || message.sender === "human"; }
-function scrollBottom(element: HTMLElement | Window | null) {
-  if (element instanceof HTMLElement) element.scrollTop = element.scrollHeight;
-  else element?.scrollTo({ top: document.documentElement.scrollHeight });
-}
-function formatTime(value: string) {
-  return value ? new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value)) : "";
-}

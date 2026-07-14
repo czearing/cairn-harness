@@ -63,7 +63,6 @@ export function addAgent(projectId: string, name: string, description: string, p
   config.roles = [...roles, { name: id, description: description.trim(), prompt: prompt.trim() }];
   if (!config.leader) config.leader = id;
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-  restartProject(projectId);
   return id;
 }
 

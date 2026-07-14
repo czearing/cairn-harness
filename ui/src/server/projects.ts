@@ -45,10 +45,11 @@ function readProject(configPath: string): Project | null {
   const dbPath = path.join(root, ".cairn-harness", "harness.db");
   if (!existsSync(dbPath)) return base;
   const db = new DatabaseSync(dbPath, { readOnly: true });
-  const configured = new Set(config.roles.map((role) => role.name));
-  const agents = safeAll(db, "SELECT agent_id,role,status,current_topic,updated_at FROM agents ORDER BY agent_id")
-    .filter((row) => configured.has(String(row.agent_id)))
-    .map((row) => withLatestMessage(db, { ...dbAgent(row), prompt: config.roles.find((role) => role.name === row.agent_id)?.prompt, isLeader: row.agent_id === config.leader, isProducer: row.agent_id === config.producer }))
+  const runtimeAgents = new Map(safeAll(db, "SELECT agent_id,role,status,current_topic,updated_at FROM agents ORDER BY agent_id")
+    .map((row) => [String(row.agent_id), dbAgent(row)]));
+  const agents = config.roles
+    .map((role) => runtimeAgents.get(role.name) || roleAgent(role, config.leader, config.producer))
+    .map((agent) => withLatestMessage(db, { ...agent, prompt: config.roles.find((role) => role.name === agent.id)?.prompt, isLeader: agent.id === config.leader, isProducer: agent.id === config.producer }))
     .map((agent) => paused ? { ...agent, status: "paused" as const, topic: undefined } : agent)
     .sort(leaderFirst);
   const activity = safeAll(db, "SELECT sequence,agent_id,status,output_json,completed_at FROM turns ORDER BY sequence DESC LIMIT 12").map(dbActivity);
@@ -73,7 +74,9 @@ function isComplete(status: string) {
 
 function configPaths() {
   const explicit = process.env.HARNESS_PROJECTS?.split(path.delimiter).filter(Boolean) || [];
-  const examples = process.env.HARNESS_DISCOVER_EXAMPLES === "0" ? [] : projectConfigs(path.join(/*turbopackIgnore: true*/ process.cwd(), "..", "examples"));
+  const examples = process.env.HARNESS_DISCOVER_EXAMPLES === "1"
+    ? projectConfigs(path.join(/*turbopackIgnore: true*/ process.cwd(), "..", "examples"))
+    : [];
   return [...explicit, ...examples, ...projectConfigs(projectRoot())]
     .filter((value, index, values) => values.indexOf(value) === index);
 }

@@ -49,7 +49,9 @@ function eventMessages(event: SessionEvent, agent: string, sessionId: string, in
   const timestamp = eventTime(event.timestamp);
   switch (event.type) {
     case "assistant.message":
-      return data.content && !String(data.content).includes("HARNESS_SESSION_READY")
+      return data.content
+        && !String(data.content).includes("HARNESS_SESSION_READY")
+        && !String(data.content).includes("CAIRN_ENVELOPE_BEGIN")
         ? [item(sessionId, index, agent, "team", String(data.content), timestamp, "assistant", "Response")]
         : [];
     case "tool.execution_start": {
@@ -61,10 +63,6 @@ function eventMessages(event: SessionEvent, agent: string, sessionId: string, in
       const name = tools.get(String(data.toolCallId)) || "tool";
       return [item(sessionId, index, agent, name, pretty(toolResult(data.result, data.success)), timestamp, "tool", `Used ${toolLabel(name)}`)];
     }
-    case "session.start":
-      return [item(sessionId, index, "system", agent, `Session ${String(data.sessionId || sessionId)} started`, timestamp, "session", "Session started")];
-    case "session.shutdown":
-      return [item(sessionId, index, "system", agent, "Session stopped", timestamp, "session", "Session stopped")];
     default:
       return [];
   }

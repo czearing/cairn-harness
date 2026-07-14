@@ -13,10 +13,10 @@
 .meta { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
 .avatar { display: grid; place-items: center; width: 20px; height: 20px; overflow: hidden; border-radius: 50%; background-color: color-mix(in srgb, var(--sender-color) 20%, var(--surface-2)); background-position: center; background-size: cover; color: var(--sender-color); font: 700 8px var(--font-geist-mono); }
 .meta strong { color: var(--sender-color); font-size: 10px; }
-.meta span, .meta time, .state { color: var(--text-subtle); font: 9px var(--font-geist-mono); }
-.meta time { margin-left: auto; }
+.meta span, .meta time { color: var(--text-subtle); font: 9px var(--font-geist-mono); }
+.meta time, .assignmentMeta time { margin-left: auto; opacity: 0; transition: opacity 120ms ease; }
+.message:hover .meta time, .message:focus-within .meta time, .assignment:hover .assignmentMeta time, .assignment:focus-within .assignmentMeta time { opacity: 1; }
 .message p { color: var(--text); }
-.state { display: block; margin-top: 6px; text-transform: capitalize; }
 .composer { padding-top: 14px; border-top: 1px solid var(--border); }
 .empty { margin: auto; color: var(--text-subtle); font-size: 11px; }
 .loading { padding: 8px; color: var(--text-subtle); font: 9px var(--font-geist-mono); text-align: center; }

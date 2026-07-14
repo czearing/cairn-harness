@@ -156,7 +156,7 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
       /> : <EmptyProject onCreate={() => setAddingProject(true)} />}
       {project && <ActivityRail project={project} cutoff={activityCutoffs[project.id]} onClear={() => setActivityCutoffs({ ...activityCutoffs, [project.id]: new Date().toISOString() })} onOpen={(agent, focusId) => setChat({ agentId: agent.id, focusId })} />}
 
-      <ActionDrawer title={chatAgent ? `Conversation with ${chatAgent.id}` : ""} open={Boolean(chatAgent)} wide onClose={() => setChat(undefined)}>
+      <ActionDrawer title={chatAgent ? "Messages" : ""} open={Boolean(chatAgent)} wide onClose={() => setChat(undefined)}>
         {chat && chatAgent && project && <ConversationDrawer key={`${project.id}:${chatAgent.id}:${chat.focusId || "latest"}`} projectId={project.id} agent={chatAgent} colors={colors} avatars={avatars} focusId={chat.focusId} onProjectMutate={mutate} />}
       </ActionDrawer>
       <NewProjectDialog open={addingProject} workspaceRoot={workspaceRoot} onBrowse={browseWorkspace} onCreate={createProject} onClose={() => setAddingProject(false)} />
