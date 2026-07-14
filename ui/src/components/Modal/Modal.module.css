@@ -1,0 +1,8 @@
+.backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgb(0 0 0 / 58%); backdrop-filter: blur(3px); }
+.modal { width: min(680px, 100%); max-height: min(760px, calc(100vh - 48px)); overflow: auto; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface-1); box-shadow: 0 26px 80px rgb(0 0 0 / 55%); }
+.modal > header { min-height: 70px; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.modal header span { color: var(--text-subtle); font-size: 9px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.modal h2 { margin: 3px 0 0; font-size: 16px; font-weight: 620; }
+.modal header button { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.modal header button:hover { background: var(--surface-hover); color: var(--text); }
+@media (max-width: 720px) { .backdrop { align-items: end; padding: 0; } .modal { max-height: 92vh; border-radius: 14px 14px 0 0; } }

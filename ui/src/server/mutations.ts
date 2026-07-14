@@ -94,23 +94,21 @@ function addWorkDirectory(projectId: string) {
   return "work-items";
 }
 
-export function createProject(name: string, rolesText: string) {
-  const roles = rolesText.split("\n").map(parseRole).filter((role): role is Role => Boolean(role));
-  if (!roles.length) throw new Error("Add at least one agent");
-  if (new Set(roles.map((role) => role.name)).size !== roles.length) {
-    throw new Error("Agent names must be unique");
-  }
+export function createProject(name: string, workspace: string) {
   const id = slug(name);
   if (!id) throw new Error("Project name is required");
+  if (!path.isAbsolute(workspace)) throw new Error("Workspace location must be an absolute path");
   const base = process.env.HARNESS_PROJECT_ROOT || path.join(/*turbopackIgnore: true*/ process.cwd(), "..", "projects");
   const directory = path.join(/*turbopackIgnore: true*/ base, id);
   if (existsSync(directory)) throw new Error("A project with this name already exists");
-  mkdirSync(path.join(directory, "todos"), { recursive: true });
-  mkdirSync(path.join(directory, "work-items", "inbox"), { recursive: true });
+  const root = path.resolve(workspace);
+  mkdirSync(path.join(root, ".cairn-harness"), { recursive: true });
+  mkdirSync(path.join(root, "todos"), { recursive: true });
+  mkdirSync(path.join(root, "work-items", "inbox"), { recursive: true });
+  mkdirSync(directory, { recursive: true });
   writeFileSync(path.join(directory, "project.json"), `${JSON.stringify({
-    name: name.trim(), root: ".", leader: roles[0].name, work_dir: "work-items", roles,
+    name: name.trim(), root, work_dir: "work-items", roles: [],
   }, null, 2)}\n`);
-  ensureProjectRunning(id);
   return id;
 }
 
@@ -118,11 +116,6 @@ function requiredProject(id: string) {
   const project = getProject(id);
   if (!project) throw new Error("Project not found");
   return project;
-}
-
-function parseRole(line: string) {
-  const [name, description, prompt] = line.split("|").map((value) => value.trim());
-  return name && description && prompt ? { name, description, prompt } : null;
 }
 
 function slug(value: string) {

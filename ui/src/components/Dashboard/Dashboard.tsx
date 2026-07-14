@@ -16,6 +16,8 @@ import { ActivityRail } from "../ActivityRail/ActivityRail";
 import { ConversationDrawer } from "../ConversationDrawer/ConversationDrawer";
 import { EmptyProject } from "../EmptyProject/EmptyProject";
 import { NewProjectForm } from "../NewProjectForm/NewProjectForm";
+import type { ProjectDraft } from "../NewProjectForm/NewProjectForm";
+import { Modal } from "../Modal/Modal";
 import { ProjectSidebar } from "../ProjectSidebar/ProjectSidebar";
 import { TaskEditor } from "../TaskEditor/TaskEditor";
 import { SystemStatus } from "../SystemStatus/SystemStatus";
@@ -26,7 +28,7 @@ const fetcher = (url: string) => fetch(url).then((response) => response.json());
 interface ChatSelection { agentId: string; focusId?: string; }
 interface EditorSelection { kind: "draft" | "document"; item: QueueItem; }
 
-export function Dashboard({ initialProjects }: { initialProjects: Project[] }) {
+export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects: Project[]; workspaceRoot: string }) {
   const { data = initialProjects, mutate } = useSWR<Project[]>("/api/projects", fetcher, { fallbackData: initialProjects });
   const { data: health = healthy, mutate: mutateHealth } = useSWR<HealthState>("/api/health", fetcher, { fallbackData: healthy });
   const [selectedId, setSelectedId] = useSelectedProject(initialProjects[0]?.id);
@@ -58,10 +60,14 @@ export function Dashboard({ initialProjects }: { initialProjects: Project[] }) {
     await mutate();
     return response.json().catch(() => ({})) as Promise<{ id?: string }>;
   }
-  async function createProject(name: string, roles: string) {
-    const result = await post("/api/projects", { name, roles });
+  async function createProject(draft: ProjectDraft) {
+    const result = await post("/api/projects", { name: draft.name, workspace: draft.workspace });
     setAddingProject(false);
-    if (result.id) setSelectedId(result.id);
+    if (result.id) {
+      setProjectColors({ ...projectColors, [result.id]: draft.color });
+      if (draft.avatar) setProjectAvatars({ ...projectAvatars, [result.id]: draft.avatar });
+      setSelectedId(result.id);
+    }
   }
   async function write(url: string, method: string, body?: object) {
     const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
@@ -152,9 +158,9 @@ export function Dashboard({ initialProjects }: { initialProjects: Project[] }) {
       <ActionDrawer title={chatAgent ? `Conversation with ${chatAgent.id}` : ""} open={Boolean(chatAgent)} wide onClose={() => setChat(undefined)}>
         {chat && chatAgent && project && <ConversationDrawer key={`${project.id}:${chatAgent.id}:${chat.focusId || "latest"}`} projectId={project.id} agent={chatAgent} colors={colors} avatars={avatars} focusId={chat.focusId} onProjectMutate={mutate} />}
       </ActionDrawer>
-      <ActionDrawer title="New project" open={addingProject} onClose={() => setAddingProject(false)}>
-        <NewProjectForm onCreate={createProject} />
-      </ActionDrawer>
+      <Modal title="Set up your workspace" open={addingProject} onClose={() => setAddingProject(false)}>
+        <NewProjectForm workspaceRoot={workspaceRoot} onCreate={createProject} />
+      </Modal>
       <ActionDrawer title={appearanceAgent ? `Appearance · ${appearanceAgent.id}` : ""} open={Boolean(appearanceAgent)} onClose={() => setAppearanceId(undefined)}>
         {appearanceAgent && <IdentityEditor name={appearanceAgent.id} color={agentColor(appearanceAgent.id, colors)} avatar={avatars[appearanceAgent.id]} onColor={(color) => setColors({ ...colors, [appearanceAgent.id]: color })} onAvatar={(avatar) => {
           const next = { ...avatars };

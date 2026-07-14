@@ -21,6 +21,7 @@ export function ensureProjectRunning(projectId: string) {
   if (isProjectPaused(config)) return false;
   const project = getProjects().find((candidate) => candidate.id === projectId);
   if (!project) return false;
+  if (!project.agents.length) return false;
   const recordPath = path.join(project.root, ".cairn-harness", "ui-worker.json");
   const record = readRecord(recordPath);
   if (record?.config === config && alive(record.pid)) return true;

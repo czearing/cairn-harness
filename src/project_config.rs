@@ -17,6 +17,7 @@ impl ProjectConfig {
         if config.root.is_relative() {
             config.root = base.join(&config.root);
         }
+
         config.root = config
             .root
             .canonicalize()
@@ -38,7 +39,10 @@ impl ProjectConfig {
     }
 
     pub fn leader(&self) -> &str {
-        self.leader.as_deref().unwrap_or(&self.roles[0].name)
+        self.leader
+            .as_deref()
+            .or_else(|| self.roles.first().map(|role| role.name.as_str()))
+            .unwrap_or("")
     }
 
     pub fn database_path(&self) -> PathBuf {
@@ -55,7 +59,10 @@ impl ProjectConfig {
 
     fn validate(&self) -> Result<()> {
         if self.roles.is_empty() {
-            bail!("project must contain at least one role");
+            if self.leader.is_some() || self.producer.is_some() {
+                bail!("agentless projects cannot name a leader or producer");
+            }
+            return Ok(());
         }
         let names: HashSet<_> = self.roles.iter().map(|role| role.name.as_str()).collect();
         if names.len() != self.roles.len() {
@@ -76,6 +83,35 @@ impl ProjectConfig {
                 bail!("every role needs a description and prompt");
             }
         }
+
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn loads_agentless_project_scaffold() {
+        let directory = tempdir().unwrap();
+        let workspace = directory.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        let config = directory.path().join("project.json");
+        std::fs::write(
+            &config,
+            format!(
+                r#"{{"name":"New project","root":{},"work_dir":"work-items","roles":[]}}"#,
+                serde_json::to_string(&workspace).unwrap()
+            ),
+        )
+        .unwrap();
+
+        let project = ProjectConfig::load(&config).unwrap();
+
+        assert!(project.workers().is_empty());
+        assert_eq!(project.leader(), "");
     }
 }

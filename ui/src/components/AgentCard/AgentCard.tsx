@@ -71,7 +71,7 @@ export function AgentCard({ agent, color, avatar, onClick, onPrefetch, onAppeara
             ? <button role="menuitem" onClick={() => setConfirmClear(true)}>Clear context</button>
             : <button role="menuitem" onClick={() => { setMenu(false); onClearContext?.(); }}>Confirm clear context</button>}
           {!agent.isLeader && (!confirmDelete
-            ? <button role="menuitem" className={styles.danger} onClick={() => setConfirmDelete(true)}>Delete agent…</button>
+            ? <button role="menuitem" className={styles.danger} onClick={() => setConfirmDelete(true)}>Delete agent</button>
             : <button role="menuitem" className={styles.danger} onClick={() => { setMenu(false); onDelete?.(); }}>Confirm delete agent</button>)}
         </div>}</div>
       </div>

@@ -9,9 +9,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const data = await request.json() as { name?: string; roles?: string };
+  const data = await request.json() as { name?: string; workspace?: string };
   try {
-    const id = createProject(data.name || "", data.roles || "");
+    const id = createProject(data.name || "", data.workspace || "");
     return Response.json({ id });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Project creation failed" }, { status: 400 });

@@ -5,7 +5,7 @@ import type { Activity, Agent, Project, QueueItem } from "@/lib/types";
 import { readConversationPage } from "./chat";
 import type { ConversationPage } from "@/lib/types";
 
-interface Config { name: string; root: string; leader: string; producer?: string; work_dir?: string; roles: { name: string; description: string; prompt: string }[]; }
+interface Config { name: string; root: string; leader?: string; producer?: string; work_dir?: string; roles: { name: string; description: string; prompt: string }[]; }
 
 export function getProjects(): Project[] {
   return configPaths().map(readProject).filter((project): project is Project => Boolean(project));
@@ -52,8 +52,8 @@ function readProject(configPath: string): Project | null {
     .map((agent) => paused ? { ...agent, status: "paused" as const, topic: undefined } : agent)
     .sort(leaderFirst);
   const activity = safeAll(db, "SELECT sequence,agent_id,status,output_json,completed_at FROM turns ORDER BY sequence DESC LIMIT 12").map(dbActivity);
-  const storedWork = safeAll(db, "SELECT id,path,message_id,status,created_at FROM work_items ORDER BY created_at DESC LIMIT 20").map((row) => queueItem(root, row, config.leader));
-  const queuedWork = readQueuedWork(root, config.work_dir || "work-items", config.leader);
+  const storedWork = safeAll(db, "SELECT id,path,message_id,status,created_at FROM work_items ORDER BY created_at DESC LIMIT 20").map((row) => queueItem(root, row, config.leader || ""));
+  const queuedWork = readQueuedWork(root, config.work_dir || "work-items", config.leader || "");
   const workItems = [...queuedWork, ...storedWork].map((item) => paused && !isComplete(item.status) ? { ...item, status: "paused" } : item);
   const todos = safeAll(db, `SELECT t.path,t.ingested_at,t.message_id,m.recipient,m.topic,m.status message_status,
     (SELECT w.path FROM work_items w WHERE w.created_at<=t.ingested_at ORDER BY w.created_at DESC LIMIT 1) parent_path
@@ -103,7 +103,7 @@ function readContent(root: string, relative: string) {
   if (!file.startsWith(path.resolve(root)) || !existsSync(file)) return "";
   try { return readFileSync(file, "utf8"); } catch { return ""; }
 }
-function roleAgent(role: Config["roles"][number], leader: string, producer?: string): Agent {
+function roleAgent(role: Config["roles"][number], leader?: string, producer?: string): Agent {
   return { id: role.name, role: role.description, prompt: role.prompt, isLeader: role.name === leader, isProducer: role.name === producer, status: "idle", updatedAt: "" };
 }
 function leaderFirst(a: Agent, b: Agent) {

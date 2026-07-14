@@ -15,6 +15,7 @@ export function getHealth(): HealthState {
 
 function projectIssues(project: ReturnType<typeof getProjects>[number]): HealthIssue[] {
   if (project.paused) return [];
+  if (!project.agents.length) return [];
   const issues: HealthIssue[] = [];
   const recordPath = path.join(project.root, ".cairn-harness", "ui-worker.json");
   const record = readRecord(recordPath);

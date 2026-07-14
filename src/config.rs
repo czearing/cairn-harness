@@ -12,6 +12,7 @@ pub struct ProjectConfig {
     pub work_dir: Option<PathBuf>,
     #[serde(default = "default_todo_dir")]
     pub todo_dir: PathBuf,
+    #[serde(default)]
     pub roles: Vec<RoleConfig>,
     #[serde(default)]
     pub copilot: CopilotConfig,

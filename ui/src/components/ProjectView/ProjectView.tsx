@@ -24,7 +24,8 @@ export function ProjectView({ project, colors, avatars, editor, promptEditor, on
   return <main className={styles.main}>
     <ProjectHeader name={project.name} root={shortPath(project.root)} active={active} releases={project.releases} onAdd={onAddWork} />
     <section className={styles.section}><div className={styles.sectionTitle}><h2>Agents</h2><span>{project.agents.length} configured</span></div>
-      <div className={styles.agents}>{project.agents.map((agent) => <AgentCard key={agent.id} agent={agent} color={agentColor(agent.id, colors)} avatar={avatars[agent.id]} onClick={() => onAgent(agent)} onPrefetch={() => onPrefetch(agent)} onAppearance={() => onAppearance(agent)} onPrompt={() => onPrompt(agent)} onClearContext={() => onClearContext(agent)} onDelete={() => onDelete(agent)} />)}</div>
+      {project.agents.length ? <div className={styles.agents}>{project.agents.map((agent) => <AgentCard key={agent.id} agent={agent} color={agentColor(agent.id, colors)} avatar={avatars[agent.id]} onClick={() => onAgent(agent)} onPrefetch={() => onPrefetch(agent)} onAppearance={() => onAppearance(agent)} onPrompt={() => onPrompt(agent)} onClearContext={() => onClearContext(agent)} onDelete={() => onDelete(agent)} />)}</div> :
+        <div className={styles.emptyAgents}><strong>Your workspace is ready</strong><span>Agents will be created and configured from this project page.</span></div>}
       {promptEditor}
     </section>
     <div className={styles.workGrid}>
