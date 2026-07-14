@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import type { Agent, ChatMessage } from "@/lib/types";
 import { agentColor } from "@/lib/colors";
@@ -17,11 +17,8 @@ interface Props {
 
 export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId, hasMore, loading, loadingMore, olderCount = 0, onLoadOlder, onSend }: Props) {
   const list = useRef<VirtuosoHandle>(null);
-  const [settled, setSettled] = useState(Boolean(focusId));
   const scroller = useRef<HTMLElement | Window | null>(null);
-  const revealTimer = useRef<number | undefined>(undefined);
   const settleTimer = useRef<number | undefined>(undefined);
-  const revealed = useRef(Boolean(focusId));
   const didInitialScroll = useRef(false);
   const settlingInitialBottom = useRef(!focusId);
   const reachedInitialBottom = useRef(false);
@@ -64,10 +61,6 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
     };
     observer = new ResizeObserver(() => {
       pin();
-      if (!revealed.current) {
-        revealed.current = true;
-        revealTimer.current = window.setTimeout(() => setSettled(true), 60);
-      }
       window.clearTimeout(settleTimer.current);
       settleTimer.current = window.setTimeout(() => {
         settlingInitialBottom.current = false;
@@ -84,10 +77,6 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
     history.addEventListener("touchstart", release, { passive: true });
     history.addEventListener("pointerdown", release, { passive: true });
     pin();
-    revealTimer.current = window.setTimeout(() => {
-      revealed.current = true;
-      setSettled(true);
-    }, 250);
     };
     attach();
     return () => {
@@ -99,7 +88,6 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
     };
   }, [agent.id, focusId, hasMessages]);
   useEffect(() => () => {
-    window.clearTimeout(revealTimer.current);
     window.clearTimeout(settleTimer.current);
   }, []);
   useEffect(() => {
@@ -118,7 +106,7 @@ export function ChatPanel({ agent, messages, colors = {}, avatars = {}, focusId,
       {loading && !messages.length ? <div className={styles.empty}>Loading conversation</div> :
         <Virtuoso
           ref={list}
-          className={`${styles.history} ${!settled ? styles.settling : ""}`}
+          className={styles.history}
           aria-label={`Conversation history with ${agent.id}`}
           data={messages}
           scrollerRef={(element) => { scroller.current = element; }}

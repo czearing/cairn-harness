@@ -8,11 +8,12 @@ const fetcher = (url: string) => fetch(url).then((response) => {
   return response.json() as Promise<ConversationPage>;
 });
 const firstPages = new Map<string, ConversationPage>();
+const pendingPages = new Map<string, Promise<ConversationPage>>();
 
 export function prefetchConversation(projectId: string, agentId: string) {
   const url = firstPageUrl(projectId, agentId);
-  if (firstPages.has(url)) return;
-  void fetcher(url).then((page) => firstPages.set(url, page));
+  if (firstPages.has(url) || pendingPages.has(url)) return;
+  void sharedFetch(url);
 }
 
 export function useConversation(projectId: string, agentId: string, focusId?: string) {
@@ -25,7 +26,7 @@ export function useConversation(projectId: string, agentId: string, focusId?: st
     return `/api/projects/${projectId}/messages?${query}`;
   }
   const cached = firstPages.get(firstUrl);
-  const { data, error, isLoading, isValidating, setSize, mutate } = useSWRInfinite(getKey, fetcher, {
+  const { data, error, isLoading, isValidating, setSize, mutate } = useSWRInfinite(getKey, sharedFetch, {
     fallbackData: cached ? [cached] : undefined,
     revalidateFirstPage: true,
     revalidateAll: false,
@@ -41,6 +42,21 @@ export function useConversation(projectId: string, agentId: string, focusId?: st
   }
 
   return { messages, olderCount, hasMore: Boolean(pages.at(-1)?.hasMore), isLoading, isValidating, error, loadOlder, mutate };
+}
+
+function sharedFetch(url: string) {
+  const pending = pendingPages.get(url);
+  if (pending) return pending;
+  const request = fetcher(url).then((page) => {
+    firstPages.set(url, page);
+    pendingPages.delete(url);
+    return page;
+  }, (error) => {
+    pendingPages.delete(url);
+    throw error;
+  });
+  pendingPages.set(url, request);
+  return request;
 }
 
 function firstPageUrl(projectId: string, agentId: string, focusId?: string) {

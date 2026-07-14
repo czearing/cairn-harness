@@ -1,10 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Agent, ChatMessage, ConversationPage } from "@/lib/types";
-import { readSessionEvents } from "./session-events";
+import { readRecentSessionEvents, readSessionEvents } from "./session-events";
 
 export function readConversationPage(db: DatabaseSync, root: string, agent: Agent, before?: string, focusId?: string, limit = 30): ConversationPage {
-  const all = readConversation(db, root, agent);
   if (focusId) {
+    const all = readConversation(db, root, agent);
     const focus = all.findIndex((message) => message.id === focusId);
     if (focus >= 0) {
       const start = Math.max(0, focus - Math.floor(limit / 2));
@@ -12,12 +12,26 @@ export function readConversationPage(db: DatabaseSync, root: string, agent: Agen
       return { items, hasMore: start > 0, nextBefore: items[0] ? cursor(items[0]) : undefined };
     }
   }
-  const eligible = before ? all.filter((message) => cursor(message) < before) : all;
-  const items = eligible.slice(-limit);
-  return { items, hasMore: eligible.length > items.length, nextBefore: items[0] ? cursor(items[0]) : undefined };
+  const database = readDatabaseConversation(db, agent);
+  const eligible = before ? database.filter((message) => cursor(message) < before) : database;
+  const databasePage = eligible.slice(-limit);
+  const session = readRecentSessionEvents(root, agent.id, before, limit);
+  const items = [...databasePage, ...session.items]
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    .slice(-limit);
+  return {
+    items,
+    hasMore: eligible.length > databasePage.length || session.hasMore,
+    nextBefore: items[0] ? cursor(items[0]) : undefined,
+  };
 }
 
 function readConversation(db: DatabaseSync, root: string, agent: Agent): ChatMessage[] {
+  return [...readDatabaseConversation(db, agent), ...readSessionEvents(root, agent.id)]
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+function readDatabaseConversation(db: DatabaseSync, agent: Agent): ChatMessage[] {
   const messages = safeAll(db,
     "SELECT id,sender,recipient,body,status,created_at FROM messages WHERE sender=? OR recipient=?",
     agent.id, agent.id,
@@ -51,8 +65,7 @@ function readConversation(db: DatabaseSync, root: string, agent: Agent): ChatMes
       title: "Completed turn",
     };
   });
-  const session = readSessionEvents(root, agent.id);
-  return [...messages, ...turns, ...session].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  return [...messages, ...turns];
 }
 
 function cursor(message: ChatMessage) {
