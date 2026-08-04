@@ -51,14 +51,13 @@ impl Store {
     /// Keeps this process's claim on the watcher slot alive.
     /// Returns false when another process has taken the slot over.
     pub async fn renew_worker_instance(&self, owner: &str) -> Result<bool> {
-        let updated = sqlx::query(
-            "UPDATE worker_instance SET heartbeat=? WHERE singleton=1 AND owner=?",
-        )
-        .bind(Utc::now().to_rfc3339())
-        .bind(owner)
-        .execute(&self.pool)
-        .await?
-        .rows_affected();
+        let updated =
+            sqlx::query("UPDATE worker_instance SET heartbeat=? WHERE singleton=1 AND owner=?")
+                .bind(Utc::now().to_rfc3339())
+                .bind(owner)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
         Ok(updated == 1)
     }
 

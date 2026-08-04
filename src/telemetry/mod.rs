@@ -7,6 +7,8 @@ mod detect;
 mod finding;
 pub mod format;
 pub mod model;
+mod outcome_metrics;
+mod quality_metrics;
 mod rules;
 mod service_levels;
 #[cfg(test)]
