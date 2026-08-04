@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     fs::File,
     io::{Read, Seek, SeekFrom},
     path::PathBuf,
@@ -8,16 +9,28 @@ use anyhow::{Context, Result};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::Value;
 use tokio::sync::mpsc;
+use tokio::time::{Duration, sleep};
 
 pub struct TurnSignal {
     file: PathBuf,
     events: mpsc::UnboundedReceiver<()>,
+    running_shells: HashSet<String>,
     _watcher: RecommendedWatcher,
 }
 
+#[derive(Debug)]
 pub struct TurnEvents {
     pub text: String,
     pub tools: Vec<String>,
+    pub stop: TurnStop,
+    running_shells: HashSet<String>,
+}
+
+#[derive(Debug, Default)]
+pub enum TurnStop {
+    #[default]
+    Allowed,
+    Blocked(String),
 }
 
 impl TurnSignal {
@@ -41,6 +54,7 @@ impl TurnSignal {
         Ok(Self {
             file,
             events,
+            running_shells: HashSet::new(),
             _watcher: watcher,
         })
     }
@@ -52,18 +66,49 @@ impl TurnSignal {
     }
 
     pub async fn wait_after(&mut self, start: u64, marker: &str) -> Result<TurnEvents> {
+        self.wait_for(start, Some(marker)).await
+    }
+
+    pub async fn wait_terminal_after(&mut self, start: u64) -> Result<TurnEvents> {
+        self.wait_for(start, None).await
+    }
+
+    async fn wait_for(&mut self, start: u64, marker: Option<&str>) -> Result<TurnEvents> {
         loop {
-            if let Some(events) = read_turn(&self.file, start, marker)? {
+            if let Some(events) =
+                read_events_with_shells(&self.file, start, marker, &self.running_shells)?
+            {
+                self.running_shells = events.running_shells.clone();
                 return Ok(events);
             }
-            if self.events.recv().await.is_none() {
-                anyhow::bail!("session event watcher stopped");
+            tokio::select! {
+                event = self.events.recv() => {
+                    if event.is_none() {
+                        anyhow::bail!("session event watcher stopped");
+                    }
+                }
+                _ = sleep(Duration::from_millis(100)) => {}
             }
         }
     }
 }
 
+#[cfg(test)]
 fn read_turn(file: &PathBuf, start: u64, marker: &str) -> Result<Option<TurnEvents>> {
+    read_events(file, start, Some(marker))
+}
+
+#[cfg(test)]
+fn read_events(file: &PathBuf, start: u64, marker: Option<&str>) -> Result<Option<TurnEvents>> {
+    read_events_with_shells(file, start, marker, &HashSet::new())
+}
+
+fn read_events_with_shells(
+    file: &PathBuf,
+    start: u64,
+    marker: Option<&str>,
+    initial_running_shells: &HashSet<String>,
+) -> Result<Option<TurnEvents>> {
     let mut source = match File::open(file) {
         Ok(source) => source,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -74,8 +119,10 @@ fn read_turn(file: &PathBuf, start: u64, marker: &str) -> Result<Option<TurnEven
     source.read_to_string(&mut text)?;
     let mut output = Vec::new();
     let mut tools = Vec::new();
+    let mut tool_calls = HashMap::new();
+    let mut running_shells = initial_running_shells.clone();
     let mut marker_seen = false;
-    let mut allowed_stop = false;
+    let mut stop = None;
     for line in text.lines() {
         let Ok(event) = serde_json::from_str::<Value>(line) else {
             continue;
@@ -83,7 +130,7 @@ fn read_turn(file: &PathBuf, start: u64, marker: &str) -> Result<Option<TurnEven
         match event["type"].as_str() {
             Some("assistant.message") => {
                 if let Some(content) = event["data"]["content"].as_str() {
-                    marker_seen |= content.contains(marker);
+                    marker_seen |= marker.is_some_and(|marker| content.contains(marker));
                     if !content.contains("HARNESS_SESSION_READY") {
                         output.push(content.to_string());
                     }
@@ -92,70 +139,88 @@ fn read_turn(file: &PathBuf, start: u64, marker: &str) -> Result<Option<TurnEven
             Some("tool.execution_start") => {
                 if let Some(name) = event["data"]["toolName"].as_str() {
                     tools.push(name.to_string());
+                    if let Some(call_id) = event["data"]["toolCallId"].as_str() {
+                        tool_calls.insert(
+                            call_id.to_string(),
+                            (
+                                name.to_string(),
+                                event["data"]["arguments"]["shellId"]
+                                    .as_str()
+                                    .map(str::to_string),
+                            ),
+                        );
+                    }
+                }
+            }
+            Some("tool.execution_complete") => {
+                let Some(call_id) = event["data"]["toolCallId"].as_str() else {
+                    continue;
+                };
+                let Some((name, shell_id)) = tool_calls.get(call_id) else {
+                    continue;
+                };
+                let Some(shell_id) = shell_id else {
+                    continue;
+                };
+                let result = event["data"]["result"].to_string();
+                if tool_name(name) == "stop_powershell"
+                    || (tool_name(name) == "read_powershell"
+                        && !result.contains("is still running"))
+                {
+                    running_shells.remove(shell_id);
+                } else if tool_name(name) == "powershell" && result.contains("is still running") {
+                    running_shells.insert(shell_id.clone());
                 }
             }
             Some("hook.end") if event["data"]["hookType"] == "agentStop" => {
-                allowed_stop = event["data"]["output"]["decision"] != "block";
+                stop = Some(if event["data"]["output"]["decision"] == "block" {
+                    TurnStop::Blocked(
+                        event["data"]["output"]["reason"]
+                            .as_str()
+                            .filter(|reason| !reason.is_empty())
+                            .unwrap_or("Continue and complete every requested task.")
+                            .to_string(),
+                    )
+                } else if !running_shells.is_empty() {
+                    TurnStop::Blocked(format!(
+                        "A PowerShell command is still running ({}). Wait for its completion notification, then read it with read_powershell before finishing.",
+                        running_shells
+                            .iter()
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ))
+                } else {
+                    TurnStop::Allowed
+                });
+            }
+
+            Some("hook.end") if event["data"]["hookType"] == "subagentStop" => {
+                stop = None;
+            }
+            Some("session.error") => {
+                let message = event["data"]["message"]
+                    .as_str()
+                    .unwrap_or("Copilot session failed");
+                anyhow::bail!("Copilot session error: {message}");
             }
             _ => {}
         }
     }
-    Ok((marker_seen && allowed_stop).then(|| TurnEvents {
+    let terminal = marker.is_none() && stop.is_some();
+    let marked = marker_seen && matches!(stop, Some(TurnStop::Allowed));
+    Ok((terminal || marked).then(|| TurnEvents {
         text: output.join("\n"),
         tools,
+        stop: stop.unwrap_or_default(),
+        running_shells,
     }))
 }
 
-#[cfg(test)]
-mod tests {
-    use std::io::Write;
-
-    use tempfile::NamedTempFile;
-
-    use super::*;
-
-    #[test]
-    fn waits_for_marker_and_allowed_agent_stop() {
-        let mut file = NamedTempFile::new().unwrap();
-        writeln!(
-            file,
-            r#"{{"type":"assistant.message","data":{{"content":"CAIRN_ENVELOPE_END"}}}}"#
-        )
-        .unwrap();
-        writeln!(
-            file,
-            r#"{{"type":"hook.end","data":{{"hookType":"agentStop","output":{{"decision":"block"}}}}}}"#
-        )
-        .unwrap();
-
-        let path = file.path().to_path_buf();
-        assert!(read_turn(&path, 0, "CAIRN_ENVELOPE_END").unwrap().is_none());
-
-        writeln!(
-            file,
-            r#"{{"type":"hook.end","data":{{"hookType":"agentStop","output":{{"decision":"allow"}}}}}}"#
-        )
-        .unwrap();
-        file.flush().unwrap();
-
-        let events = read_turn(&path, 0, "CAIRN_ENVELOPE_END").unwrap().unwrap();
-        assert_eq!(events.text, "CAIRN_ENVELOPE_END");
-    }
-
-    #[test]
-    fn ignores_allowed_stop_without_requested_marker() {
-        let mut file = NamedTempFile::new().unwrap();
-        writeln!(
-            file,
-            r#"{{"type":"hook.end","data":{{"hookType":"agentStop","output":{{"decision":"allow"}}}}}}"#
-        )
-        .unwrap();
-        file.flush().unwrap();
-
-        assert!(
-            read_turn(&file.path().to_path_buf(), 0, "HARNESS_SESSION_READY")
-                .unwrap()
-                .is_none()
-        );
-    }
+fn tool_name(name: &str) -> &str {
+    name.rsplit(['.', '/']).next().unwrap_or(name)
 }
+
+#[cfg(test)]
+#[path = "turn_signal_tests.rs"]
+mod tests;

@@ -1,5 +1,6 @@
-import type { Project } from "@/lib/types";
-import { AutomationForm } from "../AutomationForm/AutomationForm";
+import type { ModelSettings, Project } from "@/lib/types";
+import { AutomationForm, type ProjectWorkflowDraft } from "../AutomationForm/AutomationForm";
+import { IdeaAgentsForm, type IdeaAgentsDraft } from "../IdeaAgentsForm/IdeaAgentsForm";
 import { Modal } from "../Modal/Modal";
 import { NewAgentForm, type AgentDraft } from "../NewAgentForm/NewAgentForm";
 import { NewProjectForm, type ProjectDraft } from "../NewProjectForm/NewProjectForm";
@@ -14,18 +15,26 @@ export function NewProjectDialog({ open, workspaceRoot, onBrowse, onCreate, onCl
   </Modal>;
 }
 
-export function NewAgentDialog({ open, project, onCreate, onClose }: {
-  open: boolean; project?: Project; onCreate: (draft: AgentDraft) => Promise<void>; onClose: () => void;
+export function NewAgentDialog({ open, project, settings, settingsError, onCreate, onClose }: {
+  open: boolean; project?: Project; settings?: ModelSettings; settingsError?: string; onCreate: (draft: AgentDraft) => Promise<void>; onClose: () => void;
 }) {
   return <Modal title="New agent" open={open} onClose={onClose}>
-    {project && <NewAgentForm first={!project.agents.length} onCancel={onClose} onCreate={onCreate} />}
+    {project && <NewAgentForm first={!project.agents.length} settings={settings} settingsError={settingsError} onCancel={onClose} onCreate={onCreate} />}
   </Modal>;
 }
 
 export function AutomationDialog({ open, project, onSave, onClose }: {
-  open: boolean; project?: Project; onSave: (producer?: string, limit?: number) => Promise<void>; onClose: () => void;
+  open: boolean; project?: Project; onSave: (draft: ProjectWorkflowDraft) => Promise<void>; onClose: () => void;
 }) {
-  return <Modal title="Automatic work" open={open} onClose={onClose}>
+  return <Modal title="Project workflow" open={open} onClose={onClose}>
     {project && <AutomationForm project={project} onCancel={onClose} onSave={onSave} />}
+  </Modal>;
+}
+
+export function IdeaAgentsDialog({ open, project, onSave, onClose }: {
+  open: boolean; project?: Project; onSave: (draft: IdeaAgentsDraft) => Promise<void>; onClose: () => void;
+}) {
+  return <Modal title="Idea agents" open={open} onClose={onClose}>
+    {project && <IdeaAgentsForm project={project} onCancel={onClose} onSave={onSave} />}
   </Modal>;
 }

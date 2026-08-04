@@ -14,9 +14,17 @@ function visit(directory) {
 
 function inspect(file) {
   const text = readFileSync(file, "utf8");
+  const relative = path.relative(process.cwd(), file);
   const lines = text.split("\n").length;
-  if (lines >= 200) failures.push(`${path.relative(process.cwd(), file)} has ${lines} lines`);
-  if (text.includes("\u2014")) failures.push(`${path.relative(process.cwd(), file)} contains forbidden punctuation`);
+  if (lines >= 200) failures.push(`${relative} has ${lines} lines`);
+  if (text.includes("\u2014")) failures.push(`${relative} contains forbidden punctuation`);
+  if (
+    path.extname(file) === ".tsx" &&
+    !relative.endsWith(path.join("components", "Button", "Button.tsx")) &&
+    /<button\b/.test(text)
+  ) {
+    failures.push(`${relative} bypasses the shared Button component`);
+  }
 }
 
 visit(path.join(process.cwd(), "src"));

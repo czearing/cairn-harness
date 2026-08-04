@@ -1,11 +1,9 @@
 .editor { display: grid; justify-items: start; gap: 16px; }
-.preview { display: grid; place-items: center; width: 72px; height: 72px; overflow: hidden; border: 2px solid; border-radius: 18px; background-color: var(--surface-2); background-position: center; background-size: cover; font: 700 16px var(--font-geist-mono); }
-.editor h3 { margin: -6px 0 2px; font-size: 15px; }
-.editor label { width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 12px; }
-.editor input[type="color"] { width: 32px; height: 32px; padding: 0; border: 0; background: transparent; cursor: pointer; }
-.upload input { max-width: 220px; color: var(--text-subtle); font-size: 10px; }
+.preview { display: grid; place-items: center; width: 72px; height: 72px; overflow: hidden; border: 2px solid; border-radius: 18px; background-color: var(--surface-2); background-position: center; background-size: cover; font: var(--weight-heading) var(--type-body-lg) var(--font-geist-mono); }
+.editor h3 { margin: -6px 0 2px; font-size: var(--type-body-lg); }
+.editor > div:not(.preview) { width: 100%; }
+.details { width: 100%; display: grid; gap: 10px; }
 .editor button { min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.editor .save { justify-self: end; border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.editor button:disabled { cursor: default; opacity: .45; }
 .editor .danger { border-color: rgb(190 56 48 / 35%); background: rgb(190 56 48 / 12%); color: #ff8f88; }
-.note, .error { font-size: 11px; }
-.note { color: var(--text-subtle); }
-.error { color: var(--danger); }

@@ -1,4 +1,6 @@
 :root {
+  --font-geist-sans: "Segoe UI Variable", "Segoe UI", sans-serif;
+  --font-geist-mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   --canvas: #0b0c0e;
   --surface-1: #111316;
   --surface-2: #17191d;
@@ -14,6 +16,7 @@
   --danger: #f28b82;
   --info: #8ab4f8;
   --radius-sm: 6px;
+  --radius-control: 8px;
   --radius-md: 10px;
   --radius-lg: 14px;
   --space-1: 4px;
@@ -24,6 +27,29 @@
   --space-6: 24px;
   --shadow-panel: 0 18px 54px rgb(0 0 0 / 28%);
   --focus: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent);
+  --type-caption: 0.75rem;
+  --type-label: 0.8125rem;
+  --type-body-sm: 0.875rem;
+  --type-body: 0.9375rem;
+  --type-body-lg: 1rem;
+  --type-reading: 1.0625rem;
+  --type-title-sm: 1.125rem;
+  --type-editor-h3: 1.1875rem;
+  --type-title: 1.25rem;
+  --type-editor-h2: 1.4375rem;
+  --type-title-lg: 1.5rem;
+  --type-editor-h1: 1.75rem;
+  --type-display: clamp(1.75rem, 3vw, 2.25rem);
+  --weight-regular: 400;
+  --weight-caption: 400;
+  --weight-medium: 450;
+  --weight-label: 500;
+  --weight-heading: 550;
+  --weight-display: 600;
+  --leading-compact: 1.25;
+  --leading-ui: 1.4;
+  --leading-body: 1.55;
+  --leading-reading: 1.68;
 }
 
 * {
@@ -46,9 +72,15 @@ body {
   background: var(--canvas);
   color: var(--text);
   font-family: var(--font-geist-sans), sans-serif;
+  font-size: var(--type-body);
+  line-height: var(--leading-body);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
-button, input, textarea { font: inherit; }
+h1, h2, h3, h4 { font-weight: var(--weight-heading); }
+strong, b { font-weight: var(--weight-heading); }
+button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 ::selection { background: var(--accent); color: #07100b; }
 :focus-visible { outline: none; box-shadow: var(--focus); }

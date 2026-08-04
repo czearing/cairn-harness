@@ -1,10 +1,20 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, statSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { getProjectConfigPath, getProjects } from "./projects";
+import { firstExistingPath } from "./binary-selection";
+import { readFileTail } from "./file-tail";
+import { getProjectConfigPath, getProjectRuntime, getProjects } from "./projects";
+import { notifyProjectRegistryChanged } from "./project-registry";
+import { removeProjectStateAndRegistration } from "./project-removal";
+import { supervisorEnabled, supervisorRestartDelayMs } from "./supervisor-policy";
+import { createCachedWorkerProcessResolver, ownsWorkerProcess, readProcessIdentity, withOwnedWorker, type ProcessIdentity, type WorkerRecord } from "./worker-process-identity";
+import { globalSettingsPath } from "./global-settings";
+import { setProjectState, setProjectStateInDatabase } from "./project-state";
+import { performProjectPause, performProjectRestart } from "./supervisor-transitions";
 
-interface WorkerRecord { pid: number; config: string; startedAt: string; }
+export { setProjectStateInDatabase, performProjectPause, performProjectRestart };
+
+const resolveWorkerProcess = createCachedWorkerProcessResolver();
 
 export function startAllProjects() {
   if (!supervisorEnabled()) return;
@@ -19,26 +29,59 @@ export function ensureProjectRunning(projectId: string) {
   const config = getProjectConfigPath(projectId);
   if (!config) return false;
   if (isProjectPaused(config)) return false;
-  const project = getProjects().find((candidate) => candidate.id === projectId);
+  const project = getProjectRuntime(projectId);
   if (!project) return false;
   if (!project.agents.length) return false;
   const recordPath = path.join(project.root, ".cairn-harness", "ui-worker.json");
   const record = readRecord(recordPath);
-  if (record?.config === config && alive(record.pid)) return true;
-  if (record) rmSync(recordPath, { force: true });
+  const owned = resolveWorkerProcess(record, config);
+  if (owned) {
+    if (owned !== record) writeFileSync(recordPath, JSON.stringify(owned));
+    return true;
+  }
+  rmSync(recordPath, { force: true });
   const invocation = harnessInvocation(config);
-  const child = spawn(invocation.command, invocation.args, {
-    cwd: path.dirname(config),
-    detached: true,
-    windowsHide: true,
-    stdio: "ignore",
-  });
-  if (child.pid === undefined) throw new Error(`Could not start worker for ${projectId}`);
   mkdirSync(path.dirname(recordPath), { recursive: true });
-  writeFileSync(recordPath, JSON.stringify({ pid: child.pid, config, startedAt: new Date().toISOString() } satisfies WorkerRecord));
+  const logPath = path.join(project.root, ".cairn-harness", "worker.log");
+  rotateLog(logPath);
+  const log = openSync(logPath, "a");
+  let identity: ProcessIdentity | null = null;
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn(invocation.command, invocation.args, {
+      cwd: path.dirname(config), detached: true, windowsHide: true, stdio: ["ignore", log, log],
+      env: { ...process.env, HARNESS_GLOBAL_SETTINGS: globalSettingsPath() },
+    });
+    child.once("error", (error) => {
+      if (child.pid !== undefined && identity && sameWorker(readRecord(recordPath), child.pid, identity)) {
+        rmSync(recordPath, { force: true });
+      }
+      console.error(`Project worker failed for ${projectId}`, error);
+    });
+  } finally { closeSync(log); }
+  if (child.pid === undefined) throw new Error(`Could not start worker for ${projectId}`);
+  identity = readProcessIdentity(child.pid);
+  if (!identity) {
+    terminateProcessTree(child);
+    throw new Error(`Could not verify worker process identity for ${projectId}`);
+  }
+  const workerRecord = {
+    pid: child.pid,
+    config,
+    startedAt: new Date().toISOString(),
+    log: logPath,
+    process: identity,
+  } satisfies WorkerRecord;
+  const verifiedRecord = resolveWorkerProcess(workerRecord, config, () => identity);
+  writeFileSync(recordPath, JSON.stringify(verifiedRecord || workerRecord));
   const pid = child.pid;
   child.once("exit", () => {
-    if (readRecord(recordPath)?.pid === pid) rmSync(recordPath, { force: true });
+    if (sameWorker(readRecord(recordPath), pid, identity)) rmSync(recordPath, { force: true });
+    const restart = setTimeout(() => {
+      try { ensureProjectRunning(projectId); }
+      catch (error) { console.error(`Could not restart project worker for ${projectId}`, error); }
+    }, supervisorRestartDelayMs());
+    restart.unref();
   });
   child.unref();
   return true;
@@ -46,9 +89,11 @@ export function ensureProjectRunning(projectId: string) {
 
 export function pauseProject(projectId: string) {
   const config = requiredConfig(projectId);
-  writeFileSync(pausePath(config), "");
-  stopProject(config);
-  setProjectState(config, "paused", true);
+  const marker = pausePath(config);
+  performProjectPause({
+    markerExists: () => existsSync(marker), writeMarker: () => writeFileSync(marker, ""), stop: () => stopProject(config),
+    setPaused: () => setProjectState(config, "paused", true), removeMarker: () => rmSync(marker, { force: true }),
+  });
 }
 
 export function resumeProject(projectId: string) {
@@ -64,17 +109,23 @@ export function isProjectPaused(config: string) {
 
 export function deleteProject(projectId: string) {
   const config = requiredConfig(projectId);
+  const project = getProjectRuntime(projectId);
+  if (!project) throw new Error("Project not found");
   const directory = path.dirname(config);
-  const root = path.resolve(process.env.HARNESS_PROJECT_ROOT || path.join(process.cwd(), "..", "projects"));
-  if (path.dirname(directory) !== root) throw new Error("Project is outside the managed projects directory");
+  const root = path.resolve(process.env.HARNESS_PROJECT_ROOT || path.join(/*turbopackIgnore: true*/ process.cwd(), "..", "projects"));
   stopProject(config);
-  rmSync(directory, { recursive: true, force: true });
+  removeProjectStateAndRegistration(project.root, directory, root);
+  notifyProjectRegistryChanged();
 }
 
 export function restartProject(projectId: string) {
   const config = requiredConfig(projectId);
-  stopProject(config);
-  if (!isProjectPaused(config)) ensureProjectRunning(projectId);
+  performProjectRestart({
+    stop: () => stopProject(config),
+    paused: () => isProjectPaused(config),
+    reconcile: (paused) => setProjectState(config, paused ? "paused" : "idle", true),
+    start: () => { ensureProjectRunning(projectId); },
+  });
 }
 
 function harnessInvocation(config: string) {
@@ -82,28 +133,45 @@ function harnessInvocation(config: string) {
   if (process.env.HARNESS_BIN) {
     return { command: process.env.HARNESS_BIN, args };
   }
-  const root = path.resolve(process.cwd(), "..");
-  for (const name of ["release", "debug"]) {
-    const binary = path.join(root, "target", name, process.platform === "win32" ? "cairn-harness.exe" : "cairn-harness");
-    if (existsSync(binary)) return { command: binary, args };
-  }
+
+  const root = path.resolve(/*turbopackIgnore: true*/ process.cwd(), "..");
+  const executable = process.platform === "win32" ? "cairn-harness.exe" : "cairn-harness";
+  const binary = firstExistingPath(["release", "debug"].map((name) => path.join(root, "target", name, executable)));
+  if (binary) return { command: binary, args };
   return {
     command: "cargo",
     args: ["run", "--quiet", "--manifest-path", path.join(root, "Cargo.toml"), "--", ...args],
   };
 }
 
+function terminateProcessTree(child: ReturnType<typeof spawn>) {
+  const pid = child.pid;
+  if (pid === undefined) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
+    return;
+  }
+  try { process.kill(-pid, "SIGTERM"); } catch { child.kill(); }
+}
+
+function rotateLog(logPath: string) {  try {
+    if (!existsSync(logPath) || statSync(logPath).size <= 2_000_000) return;
+    const retained = readFileTail(logPath, 1_000_000);
+    if (retained.length) writeFileSync(logPath, retained);
+  } catch {}
+}
+
 function stopProject(config: string) {
   const recordPath = recordPathFor(config);
   const record = readRecord(recordPath);
-  if (record && alive(record.pid)) {
+  withOwnedWorker(record, (owned) => {
     if (process.platform === "win32") {
-      const result = spawnSync("taskkill.exe", ["/PID", String(record.pid), "/T", "/F"], { windowsHide: true });
-      if (result.status !== 0 && alive(record.pid)) throw new Error("Could not stop project worker");
+      const result = spawnSync("taskkill.exe", ["/PID", String(owned.pid), "/T", "/F"], { windowsHide: true });
+      if (result.status !== 0 && ownsWorkerProcess(owned)) throw new Error("Could not stop project worker");
     } else {
-      process.kill(-record.pid, "SIGTERM");
+      process.kill(-owned.pid, "SIGTERM");
     }
-  }
+  });
   rmSync(recordPath, { force: true });
 }
 
@@ -123,36 +191,11 @@ function recordPathFor(config: string) {
   return path.join(project.root, ".cairn-harness", "ui-worker.json");
 }
 
-function setProjectState(configPath: string, status: "paused" | "idle", requeue: boolean) {
-  const config = JSON.parse(readFileSync(configPath, "utf8")) as { root: string };
-  const root = path.resolve(path.dirname(configPath), config.root);
-  const database = path.join(root, ".cairn-harness", "harness.db");
-  if (!existsSync(database)) return;
-  const db = new DatabaseSync(database);
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    if (requeue) db.exec("UPDATE messages SET status='pending',claimed_at=NULL WHERE status='claimed'");
-    db.prepare("UPDATE agents SET status=?,current_topic=NULL,updated_at=?")
-      .run(status, new Date().toISOString());
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  } finally {
-    db.close();
-  }
-}
-
-function readRecord(file: string): WorkerRecord | null {
-  try { return JSON.parse(readFileSync(file, "utf8")) as WorkerRecord; }
+function readRecord(file: string): unknown {
+  try { return JSON.parse(readFileSync(file, "utf8")) as unknown; }
   catch { return null; }
 }
-function alive(pid: number) {
-  try { process.kill(pid, 0); return true; }
-  catch { return false; }
-}
 
-function supervisorEnabled() {
-  return process.env.HARNESS_ENABLE_SUPERVISOR === "1"
-    && process.env.HARNESS_DISABLE_SUPERVISOR !== "1";
+function sameWorker(record: unknown, pid: number, identity: ProcessIdentity) {
+  return ownsWorkerProcess(record, () => identity) && record.pid === pid;
 }

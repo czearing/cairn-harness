@@ -2,3 +2,5 @@
 .cairn-harness/
 /project.json
 /projects/
+/test-results/
+/.ui-team/

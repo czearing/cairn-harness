@@ -1,0 +1,25 @@
+.actions { display: flex; align-items: center; gap: 6px; }
+.disclosure { position: relative; }
+.actions > button, .disclosure > button {
+  min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px;
+  border: 1px solid var(--border); border-radius: 7px; background: transparent;
+  color: var(--text-muted); font-size: var(--type-label); cursor: pointer;
+}
+.actions > button:hover, .disclosure > button:hover, .disclosure > button[aria-expanded="true"] {
+  border-color: var(--border-strong); background: var(--surface-hover); color: var(--text);
+}
+.add { color: var(--text) !important; }
+.menu {
+  position: absolute; z-index: var(--layer-menu); top: calc(100% + 5px); right: 0;
+  width: 150px; padding: 4px; border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface-2); box-shadow: var(--shadow-panel);
+}
+.menu button {
+  width: 100%; min-height: 32px; padding: 0 8px; border: 0; border-radius: 5px;
+  background: transparent; color: var(--text-muted); font-size: var(--type-body-sm); text-align: left; cursor: pointer;
+}
+.menu button:hover, .menu button:focus-visible { background: var(--surface-hover); color: var(--text); }
+@media (max-width: 720px) {
+  .actions { max-width: 100%; flex-wrap: wrap; justify-content: flex-end; }
+  .actions > button, .disclosure > button { min-height: 44px; }
+}

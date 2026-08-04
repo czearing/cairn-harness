@@ -1,24 +1,18 @@
-import { CircleDot } from "lucide-react";
+import { Button } from "@/components/Button/Button";
 import type { QueueItem } from "@/lib/types";
+import { taskPresentation } from "@/lib/work-map";
 import { workBody } from "@/lib/work-body";
 import { RowActions } from "../RowActions/RowActions";
+import { StatusIndicator } from "../StatusIndicator/StatusIndicator";
 import styles from "./QueueRow.module.css";
 
 export function QueueRow({ item, onClick, onCancel, onDelete }: { item: QueueItem; onClick?: () => void; onCancel?: () => Promise<void>; onDelete?: () => Promise<void> }) {
-  const active = item.status === "queued" || item.status === "in-progress" || item.status === "in progress";
+  const status = taskPresentation(item);
+  const active = status.canonical === "running";
   return (
-    <div className={styles.wrap}><button className={`${styles.row} ${active ? styles.active : ""}`} onClick={onClick}>
-      <CircleDot size={14} />
+    <div className={styles.wrap}><Button variant="inherit" className={`${styles.row} ${active ? styles.active : ""}`} onClick={onClick}>
       <span className={styles.copy}><span data-work-body className={styles.body}>{workBody(item)}</span>{item.context && <span>{item.context}</span>}</span>
-      <span className={styles.status}>{statusLabel(item.status)}</span>
-    </button>{(onCancel || onDelete) && <RowActions label={`Actions for task ${workBody(item)}`} cancelLabel="Cancel task" deleteLabel="Delete task" onCancel={onCancel} onDelete={onDelete} />}</div>
+      <StatusIndicator status={status.canonical} label={status.label} size="compact" />
+    </Button>{(onCancel || onDelete) && <RowActions label={`Actions for task ${workBody(item)}`} cancelLabel="Cancel task" deleteLabel="Delete task" onCancel={onCancel} onDelete={onDelete} />}</div>
   );
-}
-
-function statusLabel(status: string) {
-  if (status === "in-progress" || status === "in progress") return "Working";
-  if (status === "paused") return "Paused";
-  if (status === "cancelled") return "Cancelled";
-  if (status === "done" || status === "completed") return "Done";
-  return status;
 }

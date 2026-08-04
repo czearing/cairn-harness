@@ -11,7 +11,7 @@ pub fn markdown(entries: &[TranscriptEntry], full: bool) -> String {
             entry.sequence,
             entry.agent_id,
             entry.session_id,
-            entry.inbound_sender,
+            entry.inbound_creator,
             entry.inbound_topic,
             entry.status,
             entry.started_at,
@@ -29,18 +29,6 @@ pub fn markdown(entries: &[TranscriptEntry], full: bool) -> String {
         }
         if let Some(deliverable) = &entry.output.deliverable {
             writeln!(text, "### Deliverable\n\n{}\n", deliverable).unwrap();
-        }
-        if !entry.output.messages.is_empty() {
-            writeln!(text, "### Handoffs\n").unwrap();
-            for message in &entry.output.messages {
-                writeln!(
-                    text,
-                    "- To `{}` / `{}`: {}",
-                    message.to, message.topic, message.body
-                )
-                .unwrap();
-            }
-            text.push('\n');
         }
         if full {
             writeln!(text, "<details><summary>Full prompt</summary>\n\n```text").unwrap();

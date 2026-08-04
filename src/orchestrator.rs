@@ -1,8 +1,6 @@
 use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
+    path::PathBuf,
+    sync::{Arc, atomic::AtomicUsize},
     time::Duration,
 };
 
@@ -11,7 +9,6 @@ use chrono::{Duration as ChronoDuration, Utc};
 use tokio::{
     sync::{Semaphore, watch},
     task::JoinSet,
-    time::sleep,
 };
 
 use crate::{
@@ -21,12 +18,13 @@ use crate::{
     policy::RuntimePolicy,
     runner::AgentRunner,
     store::Store,
-    todo, transcript,
+    transcript,
     worker::{WorkerContext, run},
 };
 
 pub struct Harness {
     pub(crate) config: ProjectConfig,
+    pub(crate) config_path: Option<PathBuf>,
     pub(crate) store: Store,
     pub(crate) runner: Arc<dyn AgentRunner>,
     pub(crate) directory: Arc<Directory>,
@@ -48,6 +46,7 @@ impl Harness {
         let directory = Arc::new(build(&config.workers()));
         Self {
             config,
+            config_path: None,
             store,
             runner,
             directory,
@@ -59,45 +58,56 @@ impl Harness {
         &self.config
     }
 
+    pub fn with_config_path(mut self, config_path: PathBuf) -> Self {
+        self.config_path = Some(config_path);
+        self
+    }
+
     pub async fn bootstrap(&self) -> Result<()> {
-        let lease = ChronoDuration::milliseconds(self.policy.claim_lease_ms as i64);
         self.store
-            .recover(&(Utc::now() - lease).to_rfc3339())
+            .set_publication_enabled(!self.config.idea_agents().is_empty());
+        self.recover_stale_claims().await?;
+        self.store
+            .set_max_active_tasks(self.config.max_active_tasks, self.config.leader())
             .await?;
         for worker in self.config.workers() {
-            let state = self.store.register(&worker).await?;
-            if state.status == "paused" {
-                continue;
-            }
-            if let Some(session_id) = self
-                .runner
-                .warm(self.config.root.clone(), worker, state.session_id)
-                .await?
-            {
-                self.store.set_session(&state.agent_id, &session_id).await?;
+            self.store.register(&worker).await?;
+        }
+        self.store
+            .configure_replica_profiles(&self.config.roles)
+            .await?;
+        if !self.config.idea_agents().is_empty() {
+            self.store.backfill_release_finalizations().await?;
+            self.store.schedule_release_finalizations_now().await?;
+            crate::release::reconcile(&self.config, &self.store).await?;
+            let pending = self.store.pending_release_finalization_count().await?;
+            if pending > 0 {
+                tracing::warn!(
+                    pending,
+                    "release finalization remains pending; keep watch running or restart after fixing filesystem/database access"
+                );
             }
         }
         Ok(())
     }
 
+    pub(crate) async fn recover_stale_claims(&self) -> Result<u64> {
+        let lease = ChronoDuration::milliseconds(self.policy.claim_lease_ms as i64);
+        self.store.recover(&(Utc::now() - lease).to_rfc3339()).await
+    }
+
     pub async fn send(&self, from: &str, to: &str, topic: &str, body: &str) -> Result<usize> {
         let recipients = resolve(&self.directory, to)?;
         for recipient in &recipients {
-            self.store.enqueue(from, recipient, topic, body).await?;
+            self.store
+                .create_message(from, recipient, topic, body)
+                .await?;
         }
         Ok(recipients.len())
     }
 
     pub async fn status(&self) -> Result<Vec<AgentState>> {
         self.store.states().await
-    }
-
-    pub async fn ingest_todos(&self) -> Result<usize> {
-        let leader = resolve(&self.directory, self.config.leader())?
-            .into_iter()
-            .next()
-            .expect("validated leader has one worker");
-        todo::ingest(&self.config, &self.store, &leader).await
     }
 
     pub async fn ingest_work(&self) -> Result<usize> {
@@ -130,7 +140,7 @@ impl Harness {
 
     async fn run_with_budget(&self, idle_for: Duration, runs: usize) -> Result<()> {
         self.bootstrap().await?;
-        self.ingest_todos().await?;
+        crate::telemetry::version::record_start(&self.store).await?;
         self.ingest_work().await?;
         let active = Arc::new(AtomicUsize::new(0));
         let budget = Arc::new(AtomicUsize::new(runs));
@@ -140,10 +150,10 @@ impl Harness {
         for worker in self.config.workers() {
             tasks.spawn(run(WorkerContext {
                 config: self.config.clone(),
+                config_path: self.config_path.clone(),
                 worker,
                 store: self.store.clone(),
                 runner: self.runner.clone(),
-                directory: self.directory.clone(),
                 gate: gate.clone(),
                 active: active.clone(),
                 budget: budget.clone(),
@@ -151,7 +161,7 @@ impl Harness {
                 shutdown: shutdown_rx.clone(),
             }));
         }
-        wait_for_idle(self, &active, idle_for, &mut tasks).await?;
+        crate::orchestrator_idle::wait_for_idle(self, &active, idle_for, &mut tasks).await?;
         shutdown_tx.send(true)?;
         while let Some(result) = tasks.join_next().await {
             result??;
@@ -160,43 +170,5 @@ impl Harness {
     }
     pub fn store(&self) -> &Store {
         &self.store
-    }
-}
-async fn wait_for_idle(
-    harness: &Harness,
-    active: &AtomicUsize,
-    idle_for: Duration,
-    tasks: &mut JoinSet<Result<()>>,
-) -> Result<()> {
-    let mut idle = Duration::ZERO;
-    let tick = Duration::from_millis(25);
-    loop {
-        tokio::select! {
-            result = tasks.join_next() => {
-                match result {
-                    Some(result) => {
-                        result??;
-                        bail!("worker stopped before harness shutdown");
-                    }
-                    None => bail!("all workers stopped before harness shutdown"),
-                }
-            }
-            _ = sleep(tick) => {
-                if harness.ingest_todos().await? + harness.ingest_work().await? > 0 {
-                    idle = Duration::ZERO;
-                    continue;
-                }
-                if harness.store.open_message_count().await? == 0
-                    && active.load(Ordering::SeqCst) == 0
-                {
-                    idle += tick;
-                    if idle >= idle_for {
-                        return Ok(());
-                    }
-                } else {
-                    idle = Duration::ZERO;
-                }
-            }
-        }
     }
 }

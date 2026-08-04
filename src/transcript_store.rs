@@ -2,12 +2,12 @@ use anyhow::{Context, Result};
 use uuid::Uuid;
 
 use crate::{
-    models::{AgentOutput, Message, TranscriptEntry, WorkerSpec},
+    models::{AgentOutput, Assignment, TranscriptEntry, WorkerSpec},
     store::Store,
 };
 
 pub struct TurnRecord<'a> {
-    pub message: &'a Message,
+    pub task: &'a Assignment,
     pub worker: &'a WorkerSpec,
     pub session_id: &'a str,
     pub prompt: &'a str,
@@ -18,9 +18,35 @@ pub struct TurnRecord<'a> {
 }
 
 impl Store {
+    pub async fn agent_context(&self, agent_id: &str) -> Result<String> {
+        let turns: Vec<(String, String, String)> = sqlx::query_as(
+            "SELECT inbound_topic,inbound_body,output_json
+             FROM turns
+             WHERE agent_id=? AND status IN ('completed','waiting','paused')
+             ORDER BY sequence",
+        )
+        .bind(agent_id)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut context = String::new();
+        for (topic, body, output_json) in turns {
+            let output: AgentOutput =
+                serde_json::from_str(&output_json).context("invalid stored turn output")?;
+            let response = output.deliverable.as_deref().unwrap_or(&output.summary);
+            context.push_str("Prior assignment [");
+            context.push_str(&topic);
+            context.push_str("]:\n");
+            context.push_str(&body);
+            context.push_str("\nPrior response:\n");
+            context.push_str(response);
+            context.push_str("\n\n");
+        }
+        Ok(context)
+    }
+
     pub async fn record_turn(&self, turn: TurnRecord<'_>) -> Result<()> {
         let id = if turn.status == "completed" {
-            format!("{}:completed", turn.message.id)
+            format!("{}:completed", turn.task.id)
         } else {
             Uuid::new_v4().to_string()
         };
@@ -31,12 +57,12 @@ impl Store {
              VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(id)
-        .bind(&turn.message.id)
+        .bind(&turn.task.id)
         .bind(&turn.worker.id)
         .bind(turn.session_id)
-        .bind(&turn.message.sender)
-        .bind(&turn.message.topic)
-        .bind(&turn.message.body)
+        .bind(&turn.task.creator)
+        .bind(&turn.task.topic)
+        .bind(&turn.task.body)
         .bind(turn.prompt)
         .bind(serde_json::to_string(turn.output)?)
         .bind(turn.status)
@@ -74,7 +100,7 @@ impl Store {
                     sequence: row.0,
                     agent_id: row.1,
                     session_id: row.2,
-                    inbound_sender: row.3,
+                    inbound_creator: row.3,
                     inbound_topic: row.4,
                     inbound_body: row.5,
                     prompt: row.6,

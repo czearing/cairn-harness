@@ -1,45 +1,23 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+pub(crate) use crate::worker_context::WorkerContext;
+use crate::{
+    models::{Assignment, RunRequest},
+    prompt, turn,
+    worker_config::{live_config, refresh_config},
+    worker_lease::{LeaseRun, run_with_lease},
+    worker_result::finish_result,
+    worker_runtime::{accept_committed, accept_delegated_failure, take_budget},
 };
 use std::time::Duration;
-use tokio::{
-    sync::{Semaphore, watch},
-    time::{interval, sleep},
-};
+use tokio::sync::watch;
+use tokio::time::sleep;
 use {anyhow::Result, chrono::Utc};
-
-use crate::{
-    config::ProjectConfig,
-    directory::Directory,
-    handoff,
-    models::{AgentOutput, Message, RunRequest, WorkerSpec},
-    policy::RuntimePolicy,
-    prompt, release,
-    runner::AgentRunner,
-    store::Store,
-    turn,
-};
-
-pub(crate) struct WorkerContext {
-    pub config: ProjectConfig,
-    pub worker: WorkerSpec,
-    pub store: Store,
-    pub runner: Arc<dyn AgentRunner>,
-    pub directory: Arc<Directory>,
-    pub gate: Arc<Semaphore>,
-    pub active: Arc<AtomicUsize>,
-    pub budget: Arc<AtomicUsize>,
-    pub policy: RuntimePolicy,
-    pub shutdown: watch::Receiver<bool>,
-}
-
 pub(crate) async fn run(mut ctx: WorkerContext) -> Result<()> {
     let poll = Duration::from_millis(ctx.policy.poll_interval_ms);
     loop {
         if *ctx.shutdown.borrow() {
             return Ok(());
         }
+        refresh_config(&mut ctx)?;
         if let Some(message) = ctx.store.claim(&ctx.worker.id).await? {
             process(&ctx, message).await?;
         } else {
@@ -55,38 +33,117 @@ pub(crate) async fn run(mut ctx: WorkerContext) -> Result<()> {
     }
 }
 
-async fn process(ctx: &WorkerContext, message: Message) -> Result<()> {
-    let _active = ActiveGuard::new(ctx.active.clone());
+pub(crate) async fn process(ctx: &WorkerContext, task: Assignment) -> Result<()> {
+    let _active = crate::worker_active::ActiveGuard::new(ctx.active.clone());
     if !take_budget(&ctx.budget) {
-        ctx.store.finish(&message.id, "deferred", None).await?;
-        ctx.store
-            .set_state(&ctx.worker.id, "budget-exhausted", None)
-            .await?;
+        if ctx.store.defer_unstarted_generation(&task).await?.applied() {
+            let _ = ctx
+                .store
+                .set_state_after_claim(&task, "budget-exhausted")
+                .await?;
+        }
         return Ok(());
     }
-    ctx.store
-        .set_state(&ctx.worker.id, "working", Some(&message.topic))
-        .await?;
-    let state = ctx.store.agent(&ctx.worker.id).await?;
-    let states = ctx.store.states().await?;
-    let prompt = prompt::build(&ctx.config, &ctx.worker, &states, &message);
-    let session_id = state.session_id;
+    let permit = ctx.gate.clone().acquire_owned().await?;
+    let (config, worker) = match live_config(ctx) {
+        Ok(live) => live,
+        Err(error) => {
+            if !ctx.store.defer_unstarted_generation(&task).await?.applied() {
+                return Ok(());
+            }
+            return Err(error);
+        }
+    };
+    if !ctx.store.set_working_for_claim(&task).await?.applied() {
+        return Ok(());
+    }
+    let state = ctx.store.agent(&worker.id).await?;
+    let children = ctx.store.terminal_children(&task.id).await?;
+    let runtime_context = ctx.store.runtime_context(&task, config.leader()).await?;
+    let prompt = prompt::build(&config, &worker, &task, &children, &runtime_context);
+    let requested_session_id = state.session_id;
+    let fresh_session_prompt = if task.is_dashboard_message() {
+        Some(prompt::with_prior_context(
+            &prompt,
+            &ctx.store.agent_context(&worker.id).await?,
+        ))
+    } else {
+        None
+    };
+    let (cancel, cancellation) = watch::channel(false);
     let request = RunRequest {
-        project_root: ctx.config.root.clone(),
-        worker: ctx.worker.clone(),
-        session_id: session_id.clone(),
+        project_root: config.root.clone(),
+        worker,
+        session_id: requested_session_id,
         prompt: prompt.clone(),
+        fresh_session_prompt,
+        cancellation,
     };
     let started_at = Utc::now().to_rfc3339();
-    let permit = ctx.gate.clone().acquire_owned().await?;
-    let result = run_with_lease(ctx, &message.id, request).await;
+    let lease_run = match run_with_lease(ctx, &task, request, cancel).await {
+        Ok(lease_run) => lease_run,
+        Err(error) => LeaseRun {
+            result: Err(error),
+            pause_interrupted: false,
+            context_interrupted: false,
+        },
+    };
     drop(permit);
+    if lease_run.context_interrupted {
+        let _ = ctx.store.set_state_after_claim(&task, "idle").await?;
+        return Ok(());
+    }
+    let pause_interrupted = lease_run.pause_interrupted
+        || ctx
+            .store
+            .should_interrupt_for_pause(&task.id, &ctx.worker.id)
+            .await?;
+    let result = lease_run.result;
+    if ctx
+        .store
+        .should_interrupt_for_context(&task.id, &ctx.worker.id)
+        .await?
+    {
+        let _ = ctx.store.set_state_after_claim(&task, "idle").await?;
+        return Ok(());
+    }
+    if !ctx.store.generation_is_current(&task).await? {
+        return Ok(());
+    }
+    let session_id = ctx.store.agent(&ctx.worker.id).await?.session_id;
     let completed_at = Utc::now().to_rfc3339();
+    if accept_committed(
+        ctx,
+        &task,
+        &session_id,
+        &prompt,
+        &result,
+        &started_at,
+        &completed_at,
+    )
+    .await?
+    {
+        return Ok(());
+    }
+    if !ctx.store.claim_is_current(&task).await? && ctx.store.is_cancelled(&task.id).await? {
+        let _ = ctx.store.set_state_after_claim(&task, "idle").await?;
+        return Ok(());
+    }
+    if ctx.store.is_cancelled(&task.id).await? {
+        let _ = ctx.store.set_state_after_claim(&task, "idle").await?;
+        return Ok(());
+    }
+    if pause_interrupted {
+        if ctx.store.is_agent_paused(&ctx.worker.id).await? {
+            let _ = ctx.store.set_state_after_claim(&task, "paused").await?;
+        }
+        return Ok(());
+    }
     if ctx.store.is_agent_paused(&ctx.worker.id).await? {
         if let Ok(output) = &result {
             turn::record(
                 ctx,
-                &message,
+                &task,
                 &session_id,
                 &prompt,
                 output,
@@ -96,153 +153,31 @@ async fn process(ctx: &WorkerContext, message: Message) -> Result<()> {
             )
             .await?;
         }
-        ctx.store.set_state(&ctx.worker.id, "paused", None).await?;
+        let _ = ctx.store.set_state_after_claim(&task, "paused").await?;
         return Ok(());
     }
-    if ctx.store.is_cancelled(&message.id).await? {
-        if let Ok(output) = &result {
-            turn::record(
-                ctx,
-                &message,
-                &session_id,
-                &prompt,
-                output,
-                "cancelled",
-                &started_at,
-                &completed_at,
-            )
-            .await?;
-        }
-        ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
+    if accept_delegated_failure(
+        ctx,
+        &task,
+        &session_id,
+        &prompt,
+        &result,
+        &started_at,
+        &completed_at,
+    )
+    .await?
+    {
         return Ok(());
     }
-    match result {
-        Ok(output) if output.is_actionable() => {
-            turn::record(
-                ctx,
-                &message,
-                &session_id,
-                &prompt,
-                &output,
-                "completed",
-                &started_at,
-                &completed_at,
-            )
-            .await?;
-            handoff::dispatch(ctx, &message.id, &output).await?;
-            let released =
-                release::publish(&ctx.config, &ctx.store, &ctx.worker.id, &message, &output)
-                    .await?;
-            if output.messages.is_empty() && (ctx.worker.id == ctx.config.leader() || released) {
-                crate::work_item::complete(&ctx.config, &ctx.store, &message.id).await?;
-            }
-            ctx.store.finish(&message.id, "completed", None).await?;
-            ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
-        }
-        Ok(output) if output.is_waiting() => {
-            turn::record(
-                ctx,
-                &message,
-                &session_id,
-                &prompt,
-                &output,
-                "waiting",
-                &started_at,
-                &completed_at,
-            )
-            .await?;
-            ctx.store.finish(&message.id, "completed", None).await?;
-            ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
-        }
-        Ok(output) => {
-            turn::record(
-                ctx,
-                &message,
-                &session_id,
-                &prompt,
-                &output,
-                "invalid",
-                &started_at,
-                &completed_at,
-            )
-            .await?;
-            handle_failure(ctx, &message, "agent returned no next action").await?;
-        }
-        Err(error) => {
-            let detail = format!("{error:#}");
-            let output = AgentOutput {
-                summary: detail.clone(),
-                deliverable: None,
-                messages: Vec::new(),
-                tools: Vec::new(),
-                complete: false,
-            };
-            turn::record(
-                ctx,
-                &message,
-                &session_id,
-                &prompt,
-                &output,
-                "failed",
-                &started_at,
-                &completed_at,
-            )
-            .await?;
-            handle_failure(ctx, &message, &detail).await?;
-        }
-    }
+    finish_result(
+        ctx,
+        &task,
+        &session_id,
+        &prompt,
+        result,
+        &started_at,
+        &completed_at,
+    )
+    .await?;
     Ok(())
-}
-
-async fn run_with_lease(
-    ctx: &WorkerContext,
-    message_id: &str,
-    request: RunRequest,
-) -> Result<AgentOutput> {
-    let run = ctx.runner.run(request);
-    tokio::pin!(run);
-    let heartbeat = Duration::from_millis((ctx.policy.claim_lease_ms / 3).max(100));
-    let mut ticks = interval(heartbeat);
-    ticks.tick().await;
-    loop {
-        tokio::select! {
-            result = &mut run => return result,
-            _ = ticks.tick() => {
-                ctx.store.renew_claim(message_id, &ctx.worker.id).await?;
-            }
-        }
-    }
-}
-
-async fn handle_failure(ctx: &WorkerContext, message: &Message, error: &str) -> Result<()> {
-    if message.attempts < ctx.policy.max_attempts {
-        ctx.store.retry(&message.id, error).await?;
-        ctx.store.set_state(&ctx.worker.id, "idle", None).await?;
-    } else {
-        ctx.store.finish(&message.id, "failed", Some(error)).await?;
-        ctx.store.set_state(&ctx.worker.id, "failed", None).await?;
-    }
-    tracing::error!(agent = %ctx.worker.id, %error, "agent run failed");
-    Ok(())
-}
-
-fn take_budget(budget: &AtomicUsize) -> bool {
-    budget
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
-            value.checked_sub(1)
-        })
-        .is_ok()
-}
-
-struct ActiveGuard(Arc<AtomicUsize>);
-impl ActiveGuard {
-    fn new(active: Arc<AtomicUsize>) -> Self {
-        active.fetch_add(1, Ordering::SeqCst);
-        Self(active)
-    }
-}
-impl Drop for ActiveGuard {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
-    }
 }

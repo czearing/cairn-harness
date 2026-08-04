@@ -1,27 +1,39 @@
 "use client";
 
+import { Button } from "@/components/Button/Button";
+import { FieldMessage, FormField, Input } from "@/components/FormField/FormField";
+
 import { useState } from "react";
 import type { Project } from "@/lib/types";
 import styles from "./AutomationForm.module.css";
 
+export interface ProjectWorkflowDraft {
+  maxActiveTasks?: number;
+}
+
 export function AutomationForm({ project, onSave, onCancel }: {
-  project: Project; onSave: (producer?: string, limit?: number) => Promise<void>; onCancel: () => void;
+  project: Project; onSave: (draft: ProjectWorkflowDraft) => Promise<void>; onCancel: () => void;
 }) {
-  const [producer, setProducer] = useState(project.producerId || "");
-  const [limit, setLimit] = useState(project.producerLimit || 3);
+  const [maxActiveTasks, setMaxActiveTasks] = useState<number | "">(project.maxActiveTasks ?? "");
   const [saving, setSaving] = useState(false);
-  const available = project.agents.filter((agent) => agent.status !== "paused");
+  const [error, setError] = useState<string>();
   async function save() {
     setSaving(true);
-    try { await onSave(producer || undefined, producer ? limit : undefined); }
+    setError(undefined);
+    try {
+      await onSave({
+        maxActiveTasks: maxActiveTasks === "" ? undefined : maxActiveTasks,
+      });
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Save failed");
+    }
     finally { setSaving(false); }
   }
   return <div className={styles.form}>
-    <div className={styles.explainer}><strong>How it works</strong><span>When the project is idle, this agent creates the next task. It stops at the limit below. Manual tasks do not count.</span></div>
-    <label><span>Idea agent</span><select value={producer} onChange={(event) => setProducer(event.target.value)}><option value="">Off</option>{available.map((agent) => <option key={agent.id} value={agent.id}>{agent.id}</option>)}</select></label>
-    <label><span>Automatic task limit</span><input type="number" min={1} max={1000} disabled={!producer} value={limit} onChange={(event) => setLimit(Number(event.target.value))} /></label>
-    {project.generatedWorkCount ? <p>{project.generatedWorkCount} automatic task{project.generatedWorkCount === 1 ? "" : "s"} created so far.</p> : null}
-    {!project.agents.length && <p>Create an agent before enabling automatic work.</p>}
-    <footer><button className={styles.secondary} onClick={onCancel}>Cancel</button><span /><button disabled={saving || (Boolean(producer) && limit < 1)} onClick={() => void save()}>{saving ? "Saving" : "Save"}</button></footer>
+    <section className={styles.section}><h3>Active project work</h3><p>Limit manual work items submitted to the project leader. Chat, delegated work, and generated ideas do not use these slots.</p>
+      <FormField label="Maximum active work items" optional description="Extra manual leader work waits in oldest-first backlog order. Leave blank for no limit."><Input data-modal-autofocus type="number" min={1} max={1000} placeholder="No limit" value={maxActiveTasks} onChange={(event) => setMaxActiveTasks(event.target.value ? Number(event.target.value) : "")} /></FormField>
+    </section>
+    {error && <FieldMessage tone="error">{error}</FieldMessage>}
+    <footer><Button variant="secondary" className={styles.secondary} onClick={onCancel}>Cancel</Button><span /><Button variant="primary" disabled={saving || (maxActiveTasks !== "" && maxActiveTasks < 1)} onClick={() => void save()}>{saving ? "Saving" : "Save"}</Button></footer>
   </div>;
 }

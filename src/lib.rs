@@ -1,32 +1,67 @@
 mod acp_process;
+mod acp_profile;
+mod acp_response;
 mod acp_session;
+mod cairn_scope;
 pub mod config;
+mod coordination;
 pub mod directory;
-mod handoff;
-mod mailbox;
+mod live_response;
+mod mcp_config;
+mod mcp_path;
+pub mod mcp_server;
+mod mcp_tools;
 pub mod models;
 pub mod orchestrator;
+mod orchestrator_idle;
 mod persistent_runner;
+mod persistent_runner_startup;
+mod persistent_runner_state;
 pub mod policy;
 mod producer;
+mod producer_store;
 mod project_config;
+mod project_config_validate;
 pub mod prompt;
 pub mod protocol;
 mod release;
+mod release_finalization_store;
 mod release_store;
+mod replica;
 pub mod runner;
 mod shell_command;
+pub mod skill;
 pub mod store;
-mod todo;
-mod todo_store;
+mod store_migrations;
+mod store_open;
+mod task_automatic;
+mod task_claim;
+mod task_claim_transitions;
+mod task_counts;
+mod task_create;
+mod task_delegate;
+mod task_insert;
+mod task_policy;
+mod task_query;
+mod task_query_helpers;
+mod task_queue;
+mod task_queue_state;
+mod task_recovery;
+pub mod telemetry;
 pub mod transcript;
 mod transcript_store;
 mod turn;
 mod turn_signal;
 mod watch;
 mod work_item;
-mod work_item_store;
 mod worker;
+mod worker_active;
+mod worker_config;
+mod worker_context;
+mod worker_instance;
+mod worker_lease;
+mod worker_result;
+mod worker_runtime;
 
 use std::{path::Path, sync::Arc};
 
@@ -42,5 +77,5 @@ pub async fn open(config_path: &Path) -> Result<Harness> {
     let store = Store::open(&config.database_path()).await?;
     let runner: Arc<dyn AgentRunner> =
         Arc::new(PersistentCopilotRunner::new(config.copilot.clone()));
-    Ok(Harness::new(config, store, runner))
+    Ok(Harness::new(config, store, runner).with_config_path(config_path.to_path_buf()))
 }

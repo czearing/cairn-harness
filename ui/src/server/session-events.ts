@@ -1,150 +1,107 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { ChatMessage } from "@/lib/types";
+import { sessionEventFile, sessionFiles, sessionTimeRange } from "./session-event-files.ts";
+import { normalizeSessionEventTimestamp } from "./session-event-projector.ts";
+import { readSession } from "./session-event-reader.ts";
+import { defaultSessionIo, SessionStateCache, type SessionIo } from "./session-event-state.ts";
 
-interface SessionEvent { type?: string; timestamp?: string | number; data?: Record<string, unknown>; }
-interface SessionState {
-  offset: number;
-  nextIndex: number;
-  messages: ChatMessage[];
-  tools: [string, string][];
-  pending: [string, string][];
-}
-
-const sessions = new Map<string, SessionState>();
-
-export function readSessionEvents(root: string, agent: string): ChatMessage[] {
-  return sessionFiles(root, agent)
-    .flatMap((entry) => readSession(root, entry.file, agent, entry.sessionId))
-    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-}
+const defaultCacheLimit = 128;
+const sessions = new SessionStateCache(defaultCacheLimit);
 
 export function readRecentSessionEvents(root: string, agent: string, before: string | undefined, limit: number) {
+  return readRecentWith(root, agent, before, limit, defaultSessionIo, sessions);
+}
+
+export function createSessionEventReader(overrides: Partial<SessionIo>, cacheLimit?: number) {
+  const io = { ...defaultSessionIo, ...overrides };
+  const cache = cacheLimit === undefined ? sessions : new SessionStateCache(cacheLimit);
+  return {
+    readRecentSessionEvents(root: string, agent: string, before: string | undefined, limit: number) {
+      return readRecentWith(root, agent, before, limit, io, cache);
+    },
+    get cacheSize() { return cache.size; },
+  };
+}
+
+function readRecentWith(root: string, agent: string, before: string | undefined, limit: number, io: SessionIo, cache: SessionStateCache) {
   const items: ChatMessage[] = [];
   let hasMore = false;
-  const files = sessionFiles(root, agent);
-  for (let index = 0; index < files.length; index++) {
-    const entry = files[index];
-    const eligible = readSession(root, entry.file, agent, entry.sessionId)
-      .filter((message) => !before || cursor(message) < before);
-    const remaining = limit - items.length;
-    const page = eligible.slice(-remaining);
-    items.push(...page);
-    hasMore ||= eligible.length > page.length;
-    if (items.length >= limit) {
-      hasMore ||= index < files.length - 1;
-      break;
-    }
-  }
-  return { items: items.sort((a, b) => a.timestamp.localeCompare(b.timestamp)), hasMore };
-}
-
-function sessionFiles(root: string, agent: string) {
-  const directory = path.join(root, ".cairn-harness", "copilot-home", agent, "session-state");
-  if (!existsSync(directory)) return [];
-  return readdirSync(directory, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => {
-      const file = path.join(directory, entry.name, "events.jsonl");
-      return { file, sessionId: entry.name, modified: existsSync(file) ? statSync(file).mtimeMs : 0 };
-    })
-    .filter((entry) => entry.modified)
-    .sort((a, b) => b.modified - a.modified);
-}
-
-function readSession(root: string, file: string, agent: string, sessionId: string) {
-  if (!existsSync(file)) return [];
-  const size = statSync(file).size;
-  let state = sessions.get(file) || loadCache(cachePath(root, agent, sessionId));
-  if (!state || state.offset > size) state = emptyState();
-  if (state.offset < size) {
-    appendEvents(state, readCompleteLines(file, state.offset), agent, sessionId);
-    sessions.set(file, state);
-    writeFileSync(cachePath(root, agent, sessionId), JSON.stringify(state));
-  } else {
-    sessions.set(file, state);
-  }
-  return state.messages;
-}
-
-function appendEvents(state: SessionState, chunk: { text: string; offset: number }, agent: string, sessionId: string) {
-  const tools = new Map(state.tools);
-  const pending = new Map(state.pending);
-  for (const line of chunk.text.split("\n")) {
-    if (!line) continue;
-    const event = parseLine(line);
-    const index = state.nextIndex++;
-    if (!event) continue;
-    const data = event.data || {};
-    const timestamp = eventTime(event.timestamp);
-    if (event.type === "assistant.message") {
-      const content = String(data.content || "");
-      if (content && !content.includes("HARNESS_SESSION_READY") && !content.includes("CAIRN_ENVELOPE_BEGIN")) {
-        state.messages.push(item(sessionId, index, agent, "team", content, timestamp, "assistant", "Response"));
+  for (const entry of sessionFiles(root, agent)) {
+    for (const message of readSession(root, entry.file, agent, entry.sessionId, io, cache)) {
+      if (!before || cursor(message) < before) {
+        if (items.length >= limit) hasMore = true;
+        keepLatest(items, message, limit);
       }
-    } else if (event.type === "tool.execution_start" && data.toolCallId) {
-      const id = String(data.toolCallId);
-      const name = String(data.toolName || "tool");
-      const message = item(sessionId, index, agent, name, pretty(data.arguments), timestamp, "tool", `Using ${toolLabel(name)}`);
-      tools.set(id, name);
-      pending.set(id, message.id);
-      state.messages.push(message);
-    } else if (event.type === "tool.execution_complete" && data.toolCallId) {
-      const id = String(data.toolCallId);
-      const name = tools.get(id) || "tool";
-      const pendingId = pending.get(id);
-      if (pendingId) state.messages = state.messages.filter((message) => message.id !== pendingId);
-      pending.delete(id);
-      state.messages.push(item(sessionId, index, agent, name, pretty(toolResult(data.result, data.success)), timestamp, "tool", `Used ${toolLabel(name)}`));
     }
   }
-  state.offset = chunk.offset;
-  state.tools = [...tools];
-  state.pending = [...pending];
+  return { items, hasMore };
 }
 
-function readCompleteLines(file: string, offset: number) {
-  const size = statSync(file).size;
-  const buffer = Buffer.alloc(size - offset);
-  const descriptor = openSync(file, "r");
-  try { readSync(descriptor, buffer, 0, buffer.length, offset); } finally { closeSync(descriptor); }
-  const end = buffer.lastIndexOf(10);
-  if (end < 0) return { text: "", offset };
-  return { text: buffer.subarray(0, end + 1).toString("utf8"), offset: offset + end + 1 };
+export function resolveFocusedSessionEvent(root: string, agent: string, focusId: string) {
+  const match = /^event:([^:]+):(\d+)$/.exec(focusId);
+  if (!match || path.basename(match[1]) !== match[1]) return undefined;
+  const file = sessionEventFile(root, agent, match[1]);
+  if (!existsSync(file)) return undefined;
+  return readSession(root, file, agent, match[1], defaultSessionIo, sessions)
+    .find((message) => message.id === focusId);
 }
 
-function cachePath(root: string, agent: string, sessionId: string) {
-  const directory = path.join(root, ".cairn-harness", "ui-session-cache", agent);
-  mkdirSync(directory, { recursive: true });
-  return path.join(directory, `${sessionId}.json`);
+export function readSessionEventWindow(root: string, agent: string, anchor: string, beforeLimit: number, afterLimit: number) {
+  const before: ChatMessage[] = [];
+  const after: ChatMessage[] = [];
+  const equal: ChatMessage[] = [];
+  const add = (message: ChatMessage) => {
+    const value = cursor(message);
+    if (value < anchor) keepLatest(before, message, beforeLimit);
+    else if (value > anchor) keepEarliest(after, message, afterLimit);
+    else equal.push(message);
+  };
+  const timestamp = anchor.slice(0, anchor.indexOf("\u0000"));
+  const sources = sessionFiles(root, agent)
+    .map((entry) => ({ ...entry, range: sessionTimeRange(entry.file) }))
+    .filter((entry): entry is typeof entry & { range: { first: string; last: string } } => Boolean(entry.range));
+  const visited = new Set<string>();
+  const project = (entry: (typeof sources)[number]) => {
+    if (visited.has(entry.file)) return;
+    visited.add(entry.file);
+    readSession(root, entry.file, agent, entry.sessionId, defaultSessionIo, sessions).forEach(add);
+  };
+  sources.filter((entry) => entry.range.first <= timestamp && entry.range.last >= timestamp).forEach(project);
+  if (beforeLimit) {
+    const earlier = sources.filter((entry) => entry.range.last < timestamp).sort((a, b) => b.range.last.localeCompare(a.range.last));
+    for (const entry of earlier) {
+      if (before.length >= beforeLimit && entry.range.last < before[0].timestamp) break;
+      project(entry);
+    }
+  }
+  if (afterLimit) {
+    const later = sources.filter((entry) => entry.range.first > timestamp).sort((a, b) => a.range.first.localeCompare(b.range.first));
+    for (const entry of later) {
+      if (after.length >= afterLimit && entry.range.first > after[after.length - 1].timestamp) break;
+      project(entry);
+    }
+  }
+  return [...before, ...equal, ...after].sort(compareMessages);
 }
-function loadCache(file: string): SessionState | undefined {
-  try { return JSON.parse(readFileSync(file, "utf8")) as SessionState; } catch { return undefined; }
+
+export { normalizeSessionEventTimestamp };
+
+function cursor(message: ChatMessage) { return `${message.timestamp}\u0000${message.id}`; }
+function compareMessages(a: ChatMessage, b: ChatMessage) {
+  const left = cursor(a);
+  const right = cursor(b);
+  return left < right ? -1 : left > right ? 1 : 0;
 }
-function emptyState(): SessionState {
-  return { offset: 0, nextIndex: 0, messages: [], tools: [], pending: [] };
+function keepLatest(messages: ChatMessage[], message: ChatMessage, limit: number) {
+  if (!limit) return;
+  messages.push(message);
+  messages.sort(compareMessages);
+  if (messages.length > limit) messages.shift();
 }
-function parseLine(line: string): SessionEvent | undefined {
-  try { return JSON.parse(line) as SessionEvent; } catch { return undefined; }
-}
-function item(sessionId: string, index: number, sender: string, recipient: string, body: string, timestamp: string, kind: ChatMessage["kind"], title: string): ChatMessage {
-  return { id: `event:${sessionId}:${index}`, sender, recipient, body, status: "recorded", timestamp, direction: sender === "dashboard" ? "incoming" : "outgoing", kind, title };
-}
-function pretty(value: unknown) {
-  if (typeof value === "string") return value;
-  try { return JSON.stringify(value, null, 2); } catch { return String(value || ""); }
-}
-function toolResult(result: unknown, success: unknown) {
-  if (result && typeof result === "object" && "content" in result) return String((result as { content?: unknown }).content || success || "");
-  return result || success;
-}
-function toolLabel(name: string) {
-  const cleaned = name.replace(/^(cairnlearn|cairn)-/, "").replace(/[_-]+/g, " ").trim();
-  return cleaned === "skill output" ? "skill review" : cleaned || "tool";
-}
-function eventTime(value: string | number | undefined) {
-  return typeof value === "number" ? new Date(value).toISOString() : value || "";
-}
-function cursor(message: ChatMessage) {
-  return `${message.timestamp}\u0000${message.id}`;
+function keepEarliest(messages: ChatMessage[], message: ChatMessage, limit: number) {
+  if (!limit) return;
+  messages.push(message);
+  messages.sort(compareMessages);
+  if (messages.length > limit) messages.pop();
 }

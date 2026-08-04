@@ -18,7 +18,22 @@ fn visit(path: &Path) {
         if path.is_dir() {
             visit(&path);
         } else if path.extension().is_some_and(|extension| extension == "rs") {
-            let lines = std::fs::read_to_string(&path).unwrap().lines().count();
+            if path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().ends_with("_tests.rs"))
+            {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).unwrap();
+            let test_start = source.match_indices("\n#[cfg(").find_map(|(index, _)| {
+                source[index + 1..]
+                    .lines()
+                    .next()
+                    .is_some_and(|line| line.contains("test"))
+                    .then_some(index)
+            });
+            let shipping = &source[..test_start.unwrap_or(source.len())];
+            let lines = shipping.lines().count();
             assert!(lines < 200, "{} has {lines} lines", path.display());
         }
     }

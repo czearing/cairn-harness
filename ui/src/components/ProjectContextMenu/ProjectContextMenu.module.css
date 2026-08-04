@@ -1,18 +1,22 @@
-.menu { position: fixed; z-index: 20; width: 240px; max-height: calc(100vh - 16px); overflow: auto; padding: 6px; border: 1px solid var(--border-strong); border-radius: 10px; background: #202225; box-shadow: 0 14px 40px rgb(0 0 0 / 45%); }
+.menu { position: fixed; width: min(240px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; box-sizing: border-box; padding: 6px; border: 1px solid var(--border-strong); border-radius: 10px; background: #202225; box-shadow: 0 14px 40px rgb(0 0 0 / 45%); }
 .header { display: flex; align-items: center; gap: 9px; padding: 7px 8px 10px; }
-.header > span { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background-color: var(--canvas); background-position: center; background-size: cover; font-weight: 700; }
 .header div { min-width: 0; display: grid; gap: 2px; }
-.header strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.header small { color: var(--text-subtle); font-size: 9px; }
+.header strong { overflow: hidden; font-size: var(--type-body-sm); text-overflow: ellipsis; white-space: nowrap; }
 .group { padding: 4px 0; border-top: 1px solid var(--border); }
-.menu button { width: 100%; min-height: 32px; display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 7px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--text-muted); font-size: 11px; text-align: left; cursor: pointer; }
-.menu button:hover { background: var(--surface-hover); color: var(--text); }
 .menu i { width: 12px; height: 12px; border-radius: 50%; }
 .menu .danger { color: #ff8f88; }
 .menu .danger:hover { background: rgb(190 56 48 / 25%); color: #ffb0aa; }
-.confirm { display: grid; gap: 8px; padding: 9px; }
-.confirm strong { font-size: 12px; }
-.confirm p { margin: 0; color: var(--text-muted); font-size: 10px; line-height: 1.4; }
-.confirm input { min-height: 30px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--canvas); color: var(--text); }
-.confirm button { grid-template-columns: 18px 1fr; background: rgb(190 56 48 / 16%); }
-.confirm button:disabled { opacity: .35; cursor: not-allowed; }
+.error { margin: 0; padding: 0 8px 6px; color: #ff8f88; font-size: var(--type-label); line-height: 1.35; }
+.confirmation { display: grid; }
+.confirmationBody { display: grid; gap: 14px; padding: 20px; }
+.confirmationBody p { margin: 0; color: var(--text-muted); font-size: var(--type-body-sm); line-height: 1.5; }
+.removalWarning { display: grid; grid-template-columns: 20px 1fr; gap: 10px; align-items: start; padding: 12px; border: 1px solid rgb(190 56 48 / 35%); border-radius: 8px; background: rgb(190 56 48 / 10%); }
+.removalWarning svg { margin-top: 1px; color: #ff9c95; }
+.confirmationBody .error { padding: 0; color: #ff8f88; }
+.confirmationActions { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border); }
+.confirmationActions button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 7px; padding: 0 12px; font-weight: var(--weight-heading); cursor: pointer; }
+.confirmationActions button:disabled { opacity: .45; cursor: not-allowed; }
+.secondary { border: 1px solid var(--border); background: transparent; color: var(--text-muted); }
+.dangerAction { border: 1px solid rgb(190 56 48 / 45%); background: rgb(190 56 48 / 20%); color: #ffaaa4; }
+.dangerAction:not(:disabled):hover { background: rgb(190 56 48 / 30%); color: #ffd0cc; }
+.confirmationActions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

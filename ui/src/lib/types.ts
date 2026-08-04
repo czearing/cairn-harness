@@ -1,7 +1,24 @@
+import type { TaskCanonicalStatus } from "./task-status";
+
 export type AgentStatus = "idle" | "working" | "paused" | "failed" | "budget-exhausted";
 
 export interface Agent {
   id: string;
+  kind?: "source" | "local";
+  sourceAgentId?: string;
+  instanceOrdinal?: number;
+  legacyOverrides?: string[];
+  configurationRevision?: number;
+  appearance?: { color?: string; avatar?: string };
+  capabilities?: {
+    configure: boolean;
+    pause: boolean;
+    resume: boolean;
+    reset: boolean;
+    delete: boolean;
+    promote: boolean;
+  };
+  title?: string;
   role: string;
   status: AgentStatus;
   topic?: string;
@@ -9,8 +26,16 @@ export interface Agent {
   lastMessage?: string;
   lastMessageAt?: string;
   prompt?: string;
+  model?: string;
   isLeader?: boolean;
-  isProducer?: boolean;
+  isIdeaAgent?: boolean;
+}
+
+export interface IdeaAgent {
+  agentId: string;
+  taskLimit: number;
+  prompt: string;
+  activeTaskCount: number;
 }
 
 export interface QueueItem {
@@ -18,10 +43,18 @@ export interface QueueItem {
   title: string;
   meta: string;
   status: string;
+  rawStatus?: string;
+  canonicalStatus?: TaskCanonicalStatus;
+  statusLabel?: string;
+  taskKind?: "root" | "delegation";
+  parentId?: string;
+  accountableId?: string;
+  executorId?: string;
   content?: string;
   agentId?: string;
   chatId?: string;
   context?: string;
+  updatedAt?: string;
 }
 
 export interface Activity {
@@ -43,6 +76,24 @@ export interface ChatMessage {
   direction: "incoming" | "outgoing";
   kind: "message" | "assistant" | "tool" | "session" | "turn";
   title?: string;
+  submissionId?: string;
+  uiStatus?: "sending" | "failed";
+  workerStarted?: boolean;
+  workerError?: string;
+  deliveryState?: MessageDeliveryState;
+  error?: string;
+  replyToId?: string;
+  activity?: SafeActivity;
+  live?: boolean;
+}
+
+export type MessageDeliveryState = "sending" | "queued" | "delivered" | "working" | "replied" | "failed";
+
+export interface SafeActivity {
+  phase: string;
+  tool?: string;
+  target?: string;
+  command?: string;
 }
 
 export interface ConversationPage {
@@ -60,16 +111,36 @@ export interface Project {
   root: string;
   agents: Agent[];
   workItems: QueueItem[];
-  todos: QueueItem[];
+  delegatedActions: QueueItem[];
   activity: Activity[];
   conversations?: Record<string, ChatMessage[]>;
   workDir?: string;
   paused?: boolean;
-  producerId?: string;
-  producerLimit?: number;
-  generatedWorkCount?: number;
+  leaderTaskLimit?: number;
+  maxActiveTasks?: number;
+  delegatedTaskCount?: number;
+  backlogTaskCount?: number;
+  ideaAgents?: IdeaAgent[];
   releases: number;
   workItemCount?: number;
   activeWorkCount?: number;
   drafts?: QueueItem[];
 }
+
+export interface ModelOption {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface ModelSettings {
+  defaultModel: string;
+  models: ModelOption[];
+  catalog: ModelCatalogState;
+}
+
+export type ModelCatalogErrorCode = "copilot-not-found" | "timeout" | "empty" | "discovery-failed";
+
+export type ModelCatalogState =
+  | { status: "ready" }
+  | { status: "error"; code: ModelCatalogErrorCode; message: string; detail?: string };

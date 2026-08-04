@@ -2,7 +2,6 @@
   "name": "short-story-demo",
   "root": ".",
   "leader": "concept",
-  "todo_dir": "todos",
   "roles": [
     {
       "name": "concept",

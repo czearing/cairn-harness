@@ -1,0 +1,81 @@
+.map { min-width: 0; display: grid; gap: 12px; }
+.root {
+  overflow: hidden;
+}
+.rootLine, .childLine { display: grid; grid-template-columns: minmax(0, 1fr) 36px; align-items: center; }
+.rootLine { position: relative; }
+.rootLine::before {
+  content: "";
+  position: absolute;
+  inset: 16px auto 16px 0;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: var(--border-strong);
+}
+.root[data-status="running"] .rootLine::before { background: var(--accent); box-shadow: 0 0 14px rgb(158 240 192 / 35%); }
+.root[data-status="blocked"] .rootLine::before, .root[data-status="failed"] .rootLine::before { background: var(--danger); }
+.rootButton, .childButton { min-width: 0; width: 100%; border: 0; background: transparent; color: var(--text-muted); text-align: left; cursor: pointer; }
+.rootButton { display: grid; gap: 14px; padding: 17px 16px 15px 18px; }
+.rootButton:hover, .childButton:hover { background: color-mix(in srgb, var(--surface-hover) 78%, transparent); color: var(--text); }
+.rootButton:focus-visible, .childButton:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; box-shadow: none; }
+.rootOverview { min-width: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.statusStack { display: flex; align-items: flex-end; flex-direction: column; gap: 5px; }
+.ownerMark, .avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, currentColor 24%, var(--border));
+  background-color: var(--surface-2);
+  background-position: center;
+  background-size: cover;
+  font: var(--weight-heading) var(--type-caption) var(--font-geist-mono);
+}
+.ownerMark { width: 38px; height: 38px; border-radius: 10px; }
+.avatar { width: 28px; height: 28px; border-radius: 8px; }
+.rootCopy, .childCopy { min-width: 0; display: grid; gap: 2px; }
+.rootCopy strong { display: -webkit-box; overflow: hidden; color: var(--text); font-size: var(--type-body); font-weight: var(--weight-medium); line-height: 1.4; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.rootCopy > span:last-child, .childCopy span, .orphanHeading > div > span { color: var(--text-subtle); font-size: var(--type-caption); }
+.rootProgress { display: grid; gap: 7px; padding-left: 50px; }
+.progressCopy { display: flex; justify-content: space-between; gap: 12px; color: var(--text-subtle); font-size: var(--type-caption); }
+.progressTrack { height: 3px; overflow: hidden; border-radius: 999px; background: var(--border); }
+.progressTrack > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 65%, var(--info)), var(--accent)); }
+.health { display: grid; gap: 4px; margin: 0 14px 14px 68px; padding: 9px 12px 9px 28px; border: 1px solid color-mix(in srgb, var(--warning) 18%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--warning) 6%, transparent); color: var(--warning); font-size: var(--type-caption); }
+.delegations { border-top: 1px solid var(--border); background: rgb(0 0 0 / 8%); }
+.delegationHeading { min-height: 36px; display: flex; align-items: center; gap: 7px; padding: 0 14px 0 24px; color: var(--text-subtle); font: var(--weight-label) var(--type-caption) var(--font-geist-mono); letter-spacing: .06em; text-transform: uppercase; }
+.delegationHeading strong { display: grid; place-items: center; min-width: 18px; height: 18px; border-radius: 999px; background: var(--surface-2); color: var(--text-muted); font-size: var(--type-caption); }
+.children { position: relative; padding: 0 10px 10px 24px; }
+.children::before { content: ""; position: absolute; top: 0; bottom: 20px; left: 25px; width: 1px; background: var(--border-strong); }
+.childLine { position: relative; border-radius: 8px; }
+.childLine::before { content: ""; position: absolute; top: 50%; left: 1px; width: 13px; height: 1px; background: var(--border-strong); }
+.childButton { display: grid; grid-template-columns: 28px minmax(140px, 1fr) auto minmax(92px, auto); gap: 10px; align-items: center; margin-left: 14px; padding: 9px 10px; border-radius: 8px; }
+.childCopy strong { overflow: hidden; color: var(--text); font-size: var(--type-body-sm); font-weight: var(--weight-medium); line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.childCopy .healthReason { color: var(--warning); }
+.childButton time { color: var(--text-subtle); font-size: var(--type-caption); text-align: right; white-space: nowrap; }
+.orphans { border-color: color-mix(in srgb, var(--danger) 28%, var(--border)); background: color-mix(in srgb, var(--danger) 3%, var(--surface-2)); }
+.orphanHeading { display: flex; align-items: center; gap: 10px; padding: 13px 15px; border-bottom: 1px solid var(--border); }
+.orphanIcon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: color-mix(in srgb, var(--danger) 10%, var(--surface-2)); color: var(--danger); }
+.orphanHeading h3 { margin: 0 0 1px; font-size: var(--type-body-sm); }
+.empty { display: grid; justify-items: center; gap: 5px; padding: 46px 24px 48px; color: var(--text-subtle); font-size: var(--type-body-sm); text-align: center; }
+.emptyIcon { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 5px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); color: var(--text-muted); }
+.empty strong { color: var(--text); font-size: var(--type-body); font-weight: var(--weight-medium); }
+.empty button { min-height: 36px; margin-top: 9px; padding: 0 12px; border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border)); border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); color: var(--text); cursor: pointer; }
+.empty button:hover { background: var(--accent-soft); }
+@container active-work (max-width: 680px) {
+  .rootOverview { grid-template-columns: 34px minmax(0, 1fr); }
+  .ownerMark { width: 34px; height: 34px; }
+  .statusStack { grid-column: 2; align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
+  .rootProgress { padding-left: 46px; }
+  .childButton { grid-template-columns: 28px minmax(0, 1fr) auto; }
+  .childButton time { grid-column: 2 / -1; text-align: left; }
+}
+@container active-work (max-width: 460px) {
+  .rootButton { padding: 14px 12px 13px 14px; }
+  .rootProgress, .health { margin-left: 0; padding-left: 0; }
+  .health { margin: 0 12px 12px; padding: 8px 10px 8px 26px; }
+  .progressCopy { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .children { padding-left: 12px; }
+  .children::before, .childLine::before { display: none; }
+  .childButton { grid-template-columns: 28px minmax(0, 1fr); margin-left: 0; padding-inline: 8px; }
+  .childCopy strong { display: -webkit-box; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .statusPlacement, .childButton time { grid-column: 2; justify-self: start; }
+}

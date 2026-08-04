@@ -1,0 +1,16 @@
+to: recipe-tester
+topic: dinner-recipe-validation
+
+Use shared/dinner-recipe-brief.md as binding. Review the proposed dish now and
+review shared/dinner-sauce-development.md and
+shared/dinner-dessert-development.md when available.
+
+Build a practical validation checklist for a home cook. Check ingredient
+availability, sequencing, food safety, chicken doneness, crisp-skin retention,
+75-minute feasibility, one-cook workload, sauce balance, substitutions,
+allergens, dairy-free adaptation, leftovers, and whether every ingredient can
+be accounted for in the final method. Confirm dessert preparation does not
+conflict with hot dinner pickup. Recommend precise corrections.
+
+Write the full deliverable to shared/dinner-recipe-validation.md and return it
+to head-chef with topic dinner-recipe-validation.

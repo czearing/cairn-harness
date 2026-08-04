@@ -4,8 +4,12 @@ import { createProject } from "@/server/mutations";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+export function projectsResponse(readProjects: typeof getProjects = getProjects) {
+  return Response.json(readProjects());
+}
+
 export async function GET() {
-  return Response.json(getProjects());
+  return projectsResponse();
 }
 
 export async function POST(request: Request) {

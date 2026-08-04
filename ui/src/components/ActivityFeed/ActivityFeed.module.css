@@ -1,0 +1,11 @@
+.feed { min-width: 0; display: grid; }
+
+.empty {
+  min-height: 180px;
+  display: grid;
+  place-content: center;
+  padding: 24px;
+  color: var(--text-subtle);
+  font-size: var(--type-body-sm);
+  text-align: center;
+}

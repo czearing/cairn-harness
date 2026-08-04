@@ -1,37 +1,37 @@
-use std::path::Path;
-
+use crate::models::{AgentState, WorkerSpec};
 use anyhow::Result;
 use chrono::Utc;
-use sqlx::{
-    SqlitePool,
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
+use sqlx::SqlitePool;
+use std::{
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use uuid::Uuid;
-
-use crate::models::{AgentState, WorkerSpec};
 
 #[derive(Clone)]
 pub struct Store {
     pub(crate) pool: SqlitePool,
+    publication_enabled: Arc<AtomicBool>,
 }
 
 impl Store {
     pub async fn open(path: &Path) -> Result<Self> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let options = SqliteConnectOptions::new()
-            .filename(path)
-            .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Wal);
-        let pool = SqlitePoolOptions::new()
-            .max_connections(8)
-            .connect_with(options)
-            .await?;
-        sqlx::raw_sql(include_str!("../schema.sql"))
-            .execute(&pool)
-            .await?;
-        Ok(Self { pool })
+        let pool = crate::store_open::open_pool(path).await?;
+        Ok(Self {
+            pool,
+            publication_enabled: Arc::new(AtomicBool::new(false)),
+        })
+    }
+
+    pub(crate) fn set_publication_enabled(&self, enabled: bool) {
+        self.publication_enabled.store(enabled, Ordering::SeqCst);
+    }
+
+    pub(crate) fn publication_enabled(&self) -> bool {
+        self.publication_enabled.load(Ordering::SeqCst)
     }
 
     pub async fn register(&self, worker: &WorkerSpec) -> Result<AgentState> {
@@ -49,6 +49,34 @@ impl Store {
         .execute(&self.pool)
         .await?;
         self.agent(&worker.id).await
+    }
+
+    pub async fn set_runtime(&self, agent: &str, runtime_id: &str) -> Result<()> {
+        sqlx::query("UPDATE agents SET runtime_id=? WHERE agent_id=?")
+            .bind(runtime_id)
+            .bind(agent)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn clear_runtime_if(&self, agent: &str, runtime_id: &str) -> Result<()> {
+        sqlx::query("UPDATE agents SET runtime_id='' WHERE agent_id=? AND runtime_id=?")
+            .bind(agent)
+            .bind(runtime_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn runtime_is_current(&self, agent: &str, runtime_id: &str) -> Result<bool> {
+        let (current,): (bool,) =
+            sqlx::query_as("SELECT EXISTS(SELECT 1 FROM agents WHERE agent_id=? AND runtime_id=?)")
+                .bind(agent)
+                .bind(runtime_id)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(current)
     }
 
     pub async fn agent(&self, id: &str) -> Result<AgentState> {
@@ -90,6 +118,44 @@ impl Store {
             .bind(id)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    pub async fn clear_session_if(&self, id: &str, session_id: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE agents SET session_id='',updated_at=? WHERE agent_id=? AND session_id=?",
+        )
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .bind(session_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn record_runtime_event(
+        &self,
+        event_type: &str,
+        severity: &str,
+        agent_id: Option<&str>,
+        task_id: Option<&str>,
+        session_id: Option<&str>,
+        detail: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO runtime_events(
+                event_type,severity,agent_id,task_id,session_id,detail,created_at
+             ) VALUES(?,?,?,?,?,?,?)",
+        )
+        .bind(event_type)
+        .bind(severity)
+        .bind(agent_id)
+        .bind(task_id)
+        .bind(session_id)
+        .bind(detail)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 }

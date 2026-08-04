@@ -1,137 +1,327 @@
 "use client";
-import { useState } from "react";
+import dynamic from "next/dynamic";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
-import type { HealthState, Project, QueueItem } from "@/lib/types";
+import type { HealthState, ModelSettings, Project } from "@/lib/types";
+import { dashboardHref, parseDashboardPath, projectIdForRoute, type DashboardRoute } from "@/lib/dashboard-route";
 import { agentColor } from "@/lib/colors";
+import { agentAppearanceOverride, projectAgentColor, updateAgentAppearance } from "@/lib/agent-appearance";
 import { useAgentColors } from "@/lib/use-agent-colors";
 import { useStoredRecord } from "@/lib/use-stored-record";
 import { useSelectedProject } from "@/lib/use-selected-project";
 import { useProjectEvents } from "@/lib/use-project-events";
 import { prefetchConversation } from "@/lib/use-conversation";
-import { ActionDrawer } from "../ActionDrawer/ActionDrawer";
-import { IdentityEditor } from "../AgentIdentityEditor/AgentIdentityEditor";
-import { AgentPromptEditor } from "../AgentPromptEditor/AgentPromptEditor";
+import type { AgentWorkspaceHandle } from "../AgentWorkspace/agent-workspace-types";
 import { ActivityRail } from "../ActivityRail/ActivityRail";
-import { ConversationDrawer } from "../ConversationDrawer/ConversationDrawer";
 import { EmptyProject } from "../EmptyProject/EmptyProject";
-import { AutomationDialog, NewAgentDialog, NewProjectDialog, type AgentDraft, type ProjectDraft } from "../CreationDialogs/CreationDialogs";
+import type { AgentDraft, ProjectDraft } from "../CreationDialogs/CreationDialogs";
 import { ProjectSidebar } from "../ProjectSidebar/ProjectSidebar";
-import { TaskEditor } from "../TaskEditor/TaskEditor";
-import { SystemStatus } from "../SystemStatus/SystemStatus";
 import { ProjectView } from "../ProjectView/ProjectView";
-import { postJson, writeJson } from "./dashboard-requests";
+import { browseWorkspace, fetchJson, healthy, isHealthState, isModelSettings, isProjectList } from "./dashboard-data";
+import { automationWarning, postJson, putAutomation, submissionWarning, writeJson } from "./dashboard-requests";
+import { ResizeHandle } from "../ResizeHandle/ResizeHandle";
+import { DASHBOARD_RAILS } from "./dashboard-layout";
+import { useDraftWorkspaces } from "./DraftWorkspace";
+import { useCoalescedRefresh } from "./use-coalesced-refresh";
+import { useDashboardLayout } from "./use-dashboard-layout";
 import styles from "./Dashboard.module.css";
-const fetcher = (url: string) => fetch(url).then((response) => response.json());
-interface ChatSelection { agentId: string; focusId?: string; } interface EditorSelection { kind: "draft" | "document"; item: QueueItem; }
-export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects: Project[]; workspaceRoot: string }) {
-  const { data = initialProjects, mutate } = useSWR<Project[]>("/api/projects", fetcher, { fallbackData: initialProjects });
-  const { data: health = healthy, mutate: mutateHealth } = useSWR<HealthState>("/api/health", fetcher, { fallbackData: healthy });
-  const [selectedId, setSelectedId] = useSelectedProject(initialProjects[0]?.id);
-  const [chat, setChat] = useState<ChatSelection>();
-  const [editing, setEditing] = useState<EditorSelection>();
-  const [addingProject, setAddingProject] = useState(false);
-  const [addingAgent, setAddingAgent] = useState(false);
-  const [configuringAutomation, setConfiguringAutomation] = useState(false);
-  const [appearanceId, setAppearanceId] = useState<string>();
-  const [projectAppearanceId, setProjectAppearanceId] = useState<string>();
-  const [showHealth, setShowHealth] = useState(false);
-  const [promptId, setPromptId] = useState<string>();
+
+const ActionDrawer = dynamic(() => import("../ActionDrawer/ActionDrawer").then((module) => module.ActionDrawer), { ssr: false });
+const AgentWorkspace = dynamic(() => import("../AgentWorkspace/AgentWorkspace").then((module) => module.AgentWorkspace));
+const ConversationDrawer = dynamic(() => import("../ConversationDrawer/ConversationDrawer").then((module) => module.ConversationDrawer));
+const IdentityEditor = dynamic(() => import("../AgentIdentityEditor/AgentIdentityEditor").then((module) => module.IdentityEditor));
+const GlobalSettingsForm = dynamic(() => import("../GlobalSettings/GlobalSettings").then((module) => module.GlobalSettingsForm));
+const SystemStatus = dynamic(() => import("../SystemStatus/SystemStatus").then((module) => module.SystemStatus));
+const NewProjectDialog = dynamic(() => import("../CreationDialogs/CreationDialogs").then((module) => module.NewProjectDialog), { ssr: false });
+const NewAgentDialog = dynamic(() => import("../CreationDialogs/CreationDialogs").then((module) => module.NewAgentDialog), { ssr: false });
+const AutomationDialog = dynamic(() => import("../CreationDialogs/CreationDialogs").then((module) => module.AutomationDialog), { ssr: false });
+const IdeaAgentsDialog = dynamic(() => import("../CreationDialogs/CreationDialogs").then((module) => module.IdeaAgentsDialog), { ssr: false });
+
+const fallbackRefreshInterval = 2_000;
+const routeFocusKey = "harness-route-focus";
+export function Dashboard({ initialProjects, initialSelectedProject, initialDashboardLayout, initialDraftHeight, initialPathname, workspaceRoot }: { initialProjects: Project[]; initialSelectedProject?: string; initialDashboardLayout?: string; initialDraftHeight?: number; initialPathname: string; workspaceRoot: string }) {
+  const pathname = usePathname() || initialPathname;
+  const router = useRouter();
+  const route = parseDashboardPath(pathname) || { kind: "root" };
+  const routeProjectId = projectIdForRoute(route);
+  const { data = initialProjects, error: projectError, mutate } = useSWR<Project[]>(
+    "/api/projects",
+    (url: string) => fetchJson(url, "Could not refresh projects", isProjectList),
+    { fallbackData: initialProjects },
+  );
+  const { data: health = healthy, error: healthError, mutate: mutateHealth } = useSWR<HealthState>(
+    "/api/health",
+    (url: string) => fetchJson(url, "Could not refresh system status", isHealthState),
+    { fallbackData: healthy },
+  );
+  const { data: modelSettings, error: modelSettingsError, mutate: mutateModelSettings } = useSWR<ModelSettings>(
+    "/api/settings",
+    (url: string) => fetchJson(url, "Could not load model settings", isModelSettings),
+  );
+  const [selectedId, setSelectedId] = useSelectedProject(initialSelectedProject);
+  const chat = route.kind === "conversation" ? route : undefined;
+  const configuration = route.kind === "agent-settings" ? route : undefined;
+  const workspaceView = route.kind === "project" ? route.view : "overview";
+  const addingProject = route.kind === "new-project";
+  const agentProjectId = route.kind === "new-agent" ? route.projectId : undefined;
+  const automationProjectId = route.kind === "project-settings" && route.section === "workflow" ? route.projectId : undefined;
+  const ideaProjectId = route.kind === "project-settings" && route.section === "ideas" ? route.projectId : undefined;
+  const projectAppearanceId = route.kind === "project-settings" && route.section === "appearance" ? route.projectId : undefined;
+  const showHealth = route.kind === "system";
+  const showSettings = route.kind === "settings";
+  const chatReturnFocus = useRef<HTMLElement | undefined>(undefined);
+  const configurationReturnFocus = useRef<HTMLElement | undefined>(undefined);
+  const pendingConfigurationFocus = useRef<string | undefined>(undefined);
+  const agentConfigurationRef = useRef<AgentWorkspaceHandle>(null);
+  const agentConfigurationRevision = useRef(0);
+  const agentMutationQueue = useRef<Promise<void>>(Promise.resolve());
+  const [submissionWarningMessage, setSubmissionWarningMessage] = useState<string>();
+  const [automationWarningMessage, setAutomationWarningMessage] = useState<string>();
   const [colors, setColors] = useAgentColors();
   const [avatars, setAvatars] = useStoredRecord("harness-agent-avatars");
   const [projectColors, setProjectColors] = useStoredRecord("harness-project-colors");
   const [projectAvatars, setProjectAvatars] = useStoredRecord("harness-project-avatars");
   const [activityCutoffs, setActivityCutoffs] = useStoredRecord("harness-activity-cutoffs");
-  const project = data.find((item) => item.id === selectedId) || data[0];
-  const chatAgent = project?.agents.find((agent) => agent.id === chat?.agentId);
-  const appearanceAgent = project?.agents.find((agent) => agent.id === appearanceId);
+  const {
+    shellRef,
+    shellStyle,
+    wide: wideLayout,
+    widths: dashboardWidths,
+    projectNavMax,
+    activityMax,
+    previewRail,
+    commitRail,
+    cancelPreview,
+  } = useDashboardLayout(initialDashboardLayout);
+  const project = data.find((item) => item.id === (routeProjectId || selectedId)) || data[0];
+  const chatAgent = project?.id === chat?.projectId ? project.agents.find((agent) => agent.id === chat.agentId) : undefined;
+  const configurationAgent = project?.id === configuration?.projectId ? project.agents.find((agent) => agent.id === configuration.agentId) : undefined;
+  useEffect(() => {
+    agentConfigurationRevision.current = configurationAgent?.configurationRevision || 0;
+    agentMutationQueue.current = Promise.resolve();
+  }, [configurationAgent?.id, configurationAgent?.configurationRevision]);
+  useEffect(() => {
+    const agentId = pendingConfigurationFocus.current;
+    if (configurationAgent || !agentId) return;
+    const frame = requestAnimationFrame(() => {
+      const id = CSS.escape(agentId);
+      (configurationReturnFocus.current?.isConnected
+        ? configurationReturnFocus.current
+        : document.querySelector<HTMLElement>(`[data-agent-configure-id="${id}"]`)
+          || document.querySelector<HTMLElement>(`[data-agent-id="${id}"]`))?.focus();
+      pendingConfigurationFocus.current = undefined;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [configurationAgent, pathname]);
+  useEffect(() => {
+    if (route.kind !== "project") return;
+    const target = sessionStorage.getItem(routeFocusKey);
+    if (!target) return;
+    sessionStorage.removeItem(routeFocusKey);
+    const separator = target.indexOf(":");
+    const kind = target.slice(0, separator);
+    const agentId = target.slice(separator + 1);
+    const frame = requestAnimationFrame(() => {
+      const id = CSS.escape(agentId);
+      const selector = kind === "primary"
+        ? `[data-agent-id="${id}"]`
+        : `[data-agent-configure-id="${id}"]`;
+      document.querySelector<HTMLElement>(selector)?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [route.kind, pathname]);
   const appearanceProject = data.find((item) => item.id === projectAppearanceId);
-  const promptAgent = project?.agents.find((agent) => agent.id === promptId);
-  useProjectEvents(() => { void mutate(); void mutateHealth(); });
-  const post = (url: string, body: object) => postJson(url, body, mutate);
+  const agentProject = data.find((item) => item.id === agentProjectId);
+  const automationProject = data.find((item) => item.id === automationProjectId);
+  const ideaProject = data.find((item) => item.id === ideaProjectId);
+  useEffect(() => {
+    if (routeProjectId && routeProjectId !== selectedId) setSelectedId(routeProjectId);
+  }, [routeProjectId, selectedId, setSelectedId]);
+  const refreshErrors = [...new Set([projectError?.message, healthError?.message].filter((message): message is string => Boolean(message)))];
+  const scheduleProjectRefresh = useCoalescedRefresh(() => mutate()); const scheduleHealthRefresh = useCoalescedRefresh(() => mutateHealth());
+  const eventUpdatesDegraded = useProjectEvents(() => { scheduleProjectRefresh(); scheduleHealthRefresh(); });
+  useEffect(() => {
+    if (!eventUpdatesDegraded) return;
+    scheduleProjectRefresh();
+    scheduleHealthRefresh();
+    const timer = window.setInterval(() => {
+      scheduleProjectRefresh();
+      scheduleHealthRefresh();
+    }, fallbackRefreshInterval);
+    return () => window.clearInterval(timer);
+  }, [eventUpdatesDegraded, scheduleHealthRefresh, scheduleProjectRefresh]);
+  const warnings = [
+    ...(eventUpdatesDegraded ? ["Live updates unavailable. Refreshing periodically."] : []),
+    ...(refreshErrors.length ? [`Dashboard data may be out of date. ${refreshErrors.join(" ")}`] : []),
+    ...(submissionWarningMessage ? [submissionWarningMessage] : []),
+    ...(automationWarningMessage ? [automationWarningMessage] : []),
+  ];
+  const post = postJson;
+  const refreshProjects = () => { void mutate().catch(() => undefined); }; const refreshHealth = () => { void mutateHealth().catch(() => undefined); };
+  function navigate(next: Exclude<DashboardRoute, { kind: "root" }>, replace = false) {
+    const href = dashboardHref(next);
+    if (replace) router.replace(href);
+    else router.push(href);
+  }
+  function projectRoute(projectId = project?.id) {
+    return projectId ? { kind: "project", projectId, view: "overview" } as const : { kind: "new-project" } as const;
+  }
+  function closeRoute() {
+    navigate(projectRoute(), true);
+  }
+  const draftWorkspaces = useDraftWorkspaces({
+    project,
+    initialHeight: project?.id === initialSelectedProject ? initialDraftHeight : undefined,
+    activeDraftId: route.kind === "draft" ? route.draftId : undefined,
+    onDraftRoute: (projectId, draftId, replace) => navigate(draftId
+      ? { kind: "draft", projectId, draftId }
+      : { kind: "project", projectId, view: "overview" }, replace),
+    onSubmitted: (result) => setSubmissionWarningMessage(submissionWarning(result)),
+  });
   async function createProject(draft: ProjectDraft) {
     const result = await post("/api/projects", { name: draft.name, workspace: draft.workspace });
-    if (result.id) {
-      setProjectColors({ ...projectColors, [result.id]: draft.color });
-      if (draft.avatar) setProjectAvatars({ ...projectAvatars, [result.id]: draft.avatar });
-      setSelectedId(result.id);
-    }
-  }
-  async function browseWorkspace(initial: string) {
-    const response = await fetch("/api/folders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ initial }) });
-    const data = await response.json() as { path?: string; error?: string };
-    if (!response.ok) throw new Error(data.error || "Folder selection failed");
-    return data.path;
+    if (!result.id) return refreshProjects();
+    setProjectColors({ ...projectColors, [result.id]: draft.color }); if (draft.avatar) setProjectAvatars({ ...projectAvatars, [result.id]: draft.avatar }); setSelectedId(result.id);
+    navigate({ kind: "project", projectId: result.id, view: "overview" }, true);
+    refreshProjects();
   }
   const write = writeJson;
-  async function sendDraft(id: string, body: string) {
-    if (!project) return;
-    await post(`/api/projects/${project.id}/work-items`, { body });
-    await write(`/api/projects/${project.id}/draft?id=${id}`, "DELETE");
-    setEditing(undefined);
-    await mutate();
+  function writeAgent(method: string, body?: object) {
+    if (!project || !configurationAgent) return Promise.reject(new Error("Agent is no longer available."));
+    const projectId = project.id;
+    const agentId = configurationAgent.id;
+    const operation = agentMutationQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        const result = await write(`/api/projects/${projectId}/agents/${agentId}`, method, body, {
+          expectedRevision: agentConfigurationRevision.current,
+        });
+        if (typeof result.revision === "number") agentConfigurationRevision.current = result.revision;
+      });
+    agentMutationQueue.current = operation.catch(() => undefined);
+    return operation;
+  }
+  async function selectProject(id: string) {
+    if (!await draftWorkspaces.saveAll()) return;
+    if (
+      id !== project?.id
+      && configuration
+      && agentConfigurationRef.current
+      && !await agentConfigurationRef.current.requestClose()
+    ) return;
+    setSelectedId(id);
+    navigate({ kind: "project", projectId: id, view: "overview" });
+  }
+  async function closeAgentWorkspace() {
+    if (agentConfigurationRef.current && !await agentConfigurationRef.current.requestClose()) return;
+    const returnFocus = configurationReturnFocus.current;
+    const agentId = configuration?.agentId;
+    pendingConfigurationFocus.current = agentId;
+    if (agentId) sessionStorage.setItem(routeFocusKey, `configure:${agentId}`);
+    navigate(projectRoute(), true);
+    if (returnFocus?.isConnected) returnFocus.focus();
   }
   return (
-    <div className={styles.shell} data-app-shell>
+    <div
+      ref={shellRef}
+      className={styles.shell}
+      style={shellStyle}
+      data-app-shell
+      data-agent-workspace={configurationAgent ? "true" : undefined}
+      data-route-kind={route.kind}
+      data-route-pathname={pathname}
+      data-route-agent={chat?.agentId}
+      data-chat-agent={chatAgent?.id}
+    >
       <ProjectSidebar
         projects={data}
         colors={projectColors}
         avatars={projectAvatars}
         selected={project?.id}
-        onSelect={(id) => { setSelectedId(id); setEditing(undefined); }}
-        onNew={() => setAddingProject(true)}
-        onAppearance={(target) => setProjectAppearanceId(target.id)}
+        onSelect={(id) => { void selectProject(id); }}
+        onNew={() => navigate({ kind: "new-project" })}
+        onAppearance={(target) => navigate({ kind: "project-settings", projectId: target.id, section: "appearance" })}
+        onWorkflow={(target) => navigate({ kind: "project-settings", projectId: target.id, section: "workflow" })}
         health={health}
-        onHealth={() => setShowHealth(true)}
-        onPause={async (target) => {
-          await write(`/api/projects/${target.id}`, "PATCH", { paused: !target.paused });
-          await mutate();
-        }}
-        onDelete={async (target) => {
-          await write(`/api/projects/${target.id}`, "DELETE", { confirmation: target.id });
-          if (target.id === project?.id) setSelectedId(data.find((item) => item.id !== target.id)?.id || "");
+        onHealth={() => navigate({ kind: "system" })}
+        onSettings={() => navigate({ kind: "settings" })}
+        onPause={async (target) => { await write(`/api/projects/${target.id}`, "PATCH", { paused: !target.paused }); await mutate(); }}
+        onDelete={async (target, confirmation) => {
+          await write(`/api/projects/${target.id}`, "DELETE", { confirmation });
+          if (target.id === project?.id) {
+            const nextId = data.find((item) => item.id !== target.id)?.id;
+            setSelectedId(nextId || "");
+            navigate(nextId ? { kind: "project", projectId: nextId, view: "overview" } : { kind: "new-project" }, true);
+          }
           await mutate();
         }}
       />
-      {project ? <ProjectView
+      {wideLayout && <div className={styles.railControl} role="region" aria-label="Project navigation resize control"><ResizeHandle
+        className={`${styles.railResizeHandle} ${styles.projectNavSplitter}`}
+        orientation="vertical"
+        label="Resize project navigation"
+        controls="project-navigation-rail"
+        value={dashboardWidths.projectNav}
+        min={DASHBOARD_RAILS.projectNav.min}
+        max={projectNavMax}
+        defaultValue={DASHBOARD_RAILS.projectNav.default}
+        onPreview={(value) => previewRail("projectNav", value)}
+        onCommit={(value) => commitRail("projectNav", value)}
+        onCancel={cancelPreview}
+      /></div>}
+      {warnings.length > 0 && <p className={styles.refreshError} role="alert">{warnings.join(" ")}</p>}
+      {configurationAgent && project ? <AgentWorkspace
+        ref={agentConfigurationRef}
+        key={`${project.id}:${configurationAgent.id}`}
+        agent={configurationAgent}
+        settings={modelSettings}
+        settingsError={modelSettingsError?.message}
+        color={projectAgentColor(colors, project.id, configurationAgent.id)}
+        avatar={agentAppearanceOverride(avatars, project.id, configurationAgent.id)}
+        onBack={closeAgentWorkspace}
+        onConversation={() => navigate({ kind: "conversation", projectId: project.id, agentId: configurationAgent.id })}
+        onColor={(color) => setColors(updateAgentAppearance(colors, project.id, configurationAgent.id, color))}
+        onAvatar={(avatar) => setAvatars(updateAgentAppearance(avatars, project.id, configurationAgent.id, avatar))}
+        onSaveDetails={async (details) => { await writeAgent("PUT", { details }); await mutate(); }}
+        onSaveInstructions={async (instructions) => { await writeAgent("PUT", { instructions }); await mutate(); }}
+        onSaveModel={async (model) => { await writeAgent("PUT", { model: { model } }); await mutate(); }}
+        onRetryModels={() => mutateModelSettings()}
+        onMakeLeader={async () => {
+          await write(`/api/projects/${project.id}/agents/${configurationAgent.id}`, "PATCH", { action: "make-leader" });
+          await mutate();
+        }}
+        onPauseToggle={async () => {
+          await write(`/api/projects/${project.id}/agents/${configurationAgent.id}`, "PATCH", { action: configurationAgent.status === "paused" ? "resume" : "pause" });
+          await mutate();
+        }}
+        onReset={async () => {
+          await write(`/api/projects/${project.id}/agents/${configurationAgent.id}`, "PATCH", { action: "clear-context" });
+          await mutate();
+        }}
+        onDelete={async () => {
+          await writeAgent("DELETE");
+          navigate(projectRoute(), true);
+          await mutate();
+        }}
+      /> : project ? <ProjectView
         project={project}
         colors={colors}
         avatars={avatars}
-        promptEditor={promptAgent && <AgentPromptEditor agent={promptAgent} onClose={() => setPromptId(undefined)} onSave={async (prompt) => {
-          await write(`/api/projects/${project.id}/agents/${promptAgent.id}`, "PUT", { prompt });
-          await mutate();
-        }} />}
-        editor={editing && <TaskEditor
-          key={`${project.id}:${editing.kind}:${editing.item.id}`}
-          initialMarkdown={editing.item.content || ""}
-          status={editing.item.status}
-          draft={editing.kind === "draft"}
-          onBack={() => { setEditing(undefined); void mutate(); }}
-          onSave={(body) => editing.kind === "draft"
-            ? write(`/api/projects/${project.id}/draft`, "PUT", { id: editing.item.id, body })
-            : write(`/api/projects/${project.id}/documents`, "PUT", { path: editing.item.meta, body })}
-          onSend={editing.kind === "draft" ? (body) => sendDraft(editing.item.id, body) : undefined}
-        />}
-        onAgent={(agent) => setChat({ agentId: agent.id })}
+        workspaceView={workspaceView}
+        onWorkspaceView={(view) => navigate({ kind: "project", projectId: project.id, view })}
+        onAgent={(_agent, returnFocus) => {
+          chatReturnFocus.current = returnFocus;
+        }}
+        onConfigureAgent={(_agent, returnFocus) => {
+          configurationReturnFocus.current = returnFocus;
+        }}
         onPrefetch={(agent) => prefetchConversation(project.id, agent.id)}
-        onAppearance={(agent) => setAppearanceId(agent.id)}
-        onPrompt={(agent) => setPromptId(agent.id)}
-        onMakeLeader={async (agent) => {
-          await write(`/api/projects/${project.id}/agents/${agent.id}`, "PATCH", { action: "make-leader" });
-          await mutate();
+        onTask={(item) => {
+          if (item.status === "draft") {
+            draftWorkspaces.open(project.id, item);
+          } else if (item.agentId) navigate({ kind: "conversation", projectId: project.id, agentId: item.agentId });
         }}
-        onPauseToggle={async (agent) => {
-          await write(`/api/projects/${project.id}/agents/${agent.id}`, "PATCH", { action: agent.status === "paused" ? "resume" : "pause" });
-          await mutate();
-        }}
-        onDelete={async (agent) => {
-          await write(`/api/projects/${project.id}/agents/${agent.id}`, "DELETE");
-          await mutate();
-        }}
-        onClearContext={async (agent) => {
-          await write(`/api/projects/${project.id}/agents/${agent.id}`, "PATCH", { action: "clear-context" });
-          await mutate();
-        }}
-        onTask={(item) => item.status === "draft" ? setEditing({ kind: "draft", item }) : item.agentId && setChat({ agentId: item.agentId, focusId: item.chatId })}
         onTaskCancel={async (item) => {
           await write(`/api/projects/${project.id}/work-items`, "PATCH", { id: item.id });
           await mutate();
@@ -140,60 +330,102 @@ export function Dashboard({ initialProjects, workspaceRoot }: { initialProjects:
           await write(`/api/projects/${project.id}/work-items`, "DELETE", { id: item.id });
           await mutate();
         }}
-        onTodo={(item) => item.agentId && setChat({ agentId: item.agentId, focusId: item.chatId })}
-        onTodoDelete={async (item) => {
-          await write(`/api/projects/${project.id}/todos`, "DELETE", { path: item.meta });
+        onDelegation={(item) => item.agentId && navigate({ kind: "conversation", projectId: project.id, agentId: item.agentId, focusId: item.chatId })}
+        onDelegationCancel={async (item) => {
+          await write(`/api/projects/${project.id}/work-items`, "PATCH", { id: item.id });
           await mutate();
         }}
-        onAddWork={() => setEditing({ kind: "draft", item: newDraft() })}
-        onAddAgent={() => setAddingAgent(true)}
-        onConfigureAutomation={() => setConfiguringAutomation(true)}
-      /> : <EmptyProject onCreate={() => setAddingProject(true)} />}
-      {project && <ActivityRail project={project} cutoff={activityCutoffs[project.id]} onClear={() => setActivityCutoffs({ ...activityCutoffs, [project.id]: new Date().toISOString() })} onOpen={(agent, focusId) => setChat({ agentId: agent.id, focusId })} />}
-
-      <ActionDrawer title={chatAgent ? "Messages" : ""} open={Boolean(chatAgent)} wide onClose={() => setChat(undefined)}>
-        {chat && chatAgent && project && <ConversationDrawer key={`${project.id}:${chatAgent.id}:${chat.focusId || "latest"}`} projectId={project.id} agent={chatAgent} colors={colors} avatars={avatars} focusId={chat.focusId} onProjectMutate={mutate} />}
-      </ActionDrawer>
-      <NewProjectDialog open={addingProject} workspaceRoot={workspaceRoot} onBrowse={browseWorkspace} onCreate={createProject} onClose={() => setAddingProject(false)} />
-      <NewAgentDialog open={addingAgent} project={project} onClose={() => setAddingAgent(false)} onCreate={async (draft: AgentDraft) => {
-        if (!project) return;
-        await post(`/api/projects/${project.id}/agents`, draft);
-        setAddingAgent(false);
-        await mutate();
-      }} />
-      <AutomationDialog open={configuringAutomation} project={project} onClose={() => setConfiguringAutomation(false)} onSave={async (producer, limit) => {
-        if (!project) return;
-        await write(`/api/projects/${project.id}/automation`, "PUT", { producer, limit });
-        setConfiguringAutomation(false);
-        await mutate();
-      }} />
-      <ActionDrawer title={appearanceAgent ? `Appearance · ${appearanceAgent.id}` : ""} open={Boolean(appearanceAgent)} onClose={() => setAppearanceId(undefined)}>
-        {appearanceAgent && <IdentityEditor name={appearanceAgent.id} color={agentColor(appearanceAgent.id, colors)} avatar={avatars[appearanceAgent.id]} onColor={(color) => setColors({ ...colors, [appearanceAgent.id]: color })} onAvatar={(avatar) => {
-          const next = { ...avatars };
-          if (avatar) next[appearanceAgent.id] = avatar;
-          else delete next[appearanceAgent.id];
-          setAvatars(next);
-        }} />}
-      </ActionDrawer>
-      <ActionDrawer title={appearanceProject ? `Appearance · ${appearanceProject.name}` : ""} open={Boolean(appearanceProject)} onClose={() => setProjectAppearanceId(undefined)}>
-        {appearanceProject && <IdentityEditor name={appearanceProject.name} color={agentColor(appearanceProject.id, projectColors)} avatar={projectAvatars[appearanceProject.id]} onColor={(color) => setProjectColors({ ...projectColors, [appearanceProject.id]: color })} onAvatar={(avatar) => {
+        onAddWork={draftWorkspaces.create}
+        onAddAgent={() => navigate({ kind: "new-agent", projectId: project.id })}
+        onConfigureProject={() => navigate({ kind: "project-settings", projectId: project.id, section: "workflow" })}
+        onConfigureIdeas={() => navigate({ kind: "project-settings", projectId: project.id, section: "ideas" })}
+      /> : <EmptyProject onCreate={() => navigate({ kind: "new-project" })} />}
+      {!configurationAgent && project && <ActivityRail responsiveVisible={workspaceView === "activity"} project={project} cutoff={activityCutoffs[project.id]} onClear={() => setActivityCutoffs({ ...activityCutoffs, [project.id]: new Date().toISOString() })} onOpen={(agent, focusId) => navigate({ kind: "conversation", projectId: project.id, agentId: agent.id, focusId })} />}
+      {!configurationAgent && wideLayout && project && <div className={styles.railControl} role="region" aria-label="Recent activity resize control"><ResizeHandle
+        className={`${styles.railResizeHandle} ${styles.activitySplitter}`}
+        orientation="vertical"
+        direction={-1}
+        label="Resize recent activity"
+        controls="recent-activity-rail"
+        value={dashboardWidths.activity}
+        min={DASHBOARD_RAILS.activity.min}
+        max={activityMax}
+        defaultValue={DASHBOARD_RAILS.activity.default}
+        onPreview={(value) => previewRail("activity", value)}
+        onCommit={(value) => commitRail("activity", value)}
+        onCancel={cancelPreview}
+      /></div>}
+      {!configurationAgent && (draftWorkspaces.view || draftWorkspaces.placeholder)}
+      {chatAgent && <ActionDrawer title="" ariaLabel={`Conversation with ${chatAgent.title || chatAgent.id}`} open wide onClose={() => {
+        const returnFocus = chatReturnFocus.current;
+        sessionStorage.setItem(routeFocusKey, `primary:${chatAgent.id}`);
+        closeRoute();
+        requestAnimationFrame(() => returnFocus?.focus());
+      }}>
+        {chat && project && <ConversationDrawer
+          key={`${project.id}:${chatAgent.id}:${chat.focusId || "latest"}`}
+          projectId={project.id}
+          agent={chatAgent}
+          colors={colors}
+          avatars={avatars}
+          focusId={chat.focusId}
+          onConfigure={() => {
+            configurationReturnFocus.current = chatReturnFocus.current;
+            navigate({ kind: "agent-settings", projectId: project.id, agentId: chatAgent.id }, true);
+          }}
+          onReturnLatest={() => navigate({ kind: "conversation", projectId: project.id, agentId: chatAgent.id }, true)}
+          onProjectMutate={mutate}
+          onSubmissionWarning={setSubmissionWarningMessage}
+        />}
+      </ActionDrawer>}
+      {addingProject && <NewProjectDialog open workspaceRoot={workspaceRoot} onBrowse={browseWorkspace} onCreate={createProject} onClose={closeRoute} />}
+      {agentProject && <NewAgentDialog open project={agentProject} settings={modelSettings} settingsError={modelSettingsError?.message} onClose={closeRoute} onCreate={async (draft: AgentDraft) => {
+        if (!agentProject) return;
+        await post(`/api/projects/${agentProject.id}/agents`, draft);
+        navigate({ kind: "project", projectId: agentProject.id, view: "overview" }, true);
+        refreshProjects();
+      }} />}
+      {automationProject && <AutomationDialog open project={automationProject} onClose={closeRoute} onSave={async (draft) => {
+        if (!automationProject) return;
+        const result = await putAutomation(`/api/projects/${automationProject.id}/automation`, {
+          ...draft,
+          ideaAgents: automationProject.ideaAgents || [],
+        });
+        navigate({ kind: "project", projectId: automationProject.id, view: "overview" }, true);
+        setAutomationWarningMessage(automationWarning(result));
+        await mutate().catch(() => undefined);
+      }} />}
+      {ideaProject && <IdeaAgentsDialog open project={ideaProject} onClose={closeRoute} onSave={async (draft) => {
+        if (!ideaProject) return;
+        const result = await putAutomation(`/api/projects/${ideaProject.id}/automation`, {
+          maxActiveTasks: ideaProject.maxActiveTasks,
+          ...draft,
+        });
+        navigate({ kind: "project", projectId: ideaProject.id, view: "overview" }, true);
+        setAutomationWarningMessage(automationWarning(result));
+        await mutate().catch(() => undefined);
+      }} />}
+      {appearanceProject && <ActionDrawer title={`Appearance · ${appearanceProject.name}`} open onClose={closeRoute}>
+        <IdentityEditor name={appearanceProject.name} color={agentColor(appearanceProject.id, projectColors)} avatar={projectAvatars[appearanceProject.id]} onColor={(color) => setProjectColors({ ...projectColors, [appearanceProject.id]: color })} onAvatar={(avatar) => {
           const next = { ...projectAvatars };
           if (avatar) next[appearanceProject.id] = avatar;
           else delete next[appearanceProject.id];
           setProjectAvatars(next);
-        }} />}
-      </ActionDrawer>
-      <ActionDrawer title="System status" open={showHealth} onClose={() => setShowHealth(false)}>
+        }} />
+      </ActionDrawer>}
+      {showHealth && <ActionDrawer title="System status" open onClose={closeRoute}>
         <SystemStatus health={health} onRestart={async (projectId) => {
           await post("/api/health", { projectId });
-          await Promise.all([mutate(), mutateHealth()]);
+          refreshProjects();
+          refreshHealth();
         }} />
-      </ActionDrawer>
+      </ActionDrawer>}
+      {showSettings && <ActionDrawer title="Global settings" open onClose={closeRoute}>
+        <GlobalSettingsForm settings={modelSettings} error={modelSettingsError?.message} onRetry={() => mutateModelSettings()} onSave={async (defaultModel) => {
+          await write("/api/settings", "PUT", { defaultModel });
+          await mutateModelSettings();
+        }} />
+      </ActionDrawer>}
     </div>
   );
 }
-
-function newDraft(): QueueItem {
-  return { id: crypto.randomUUID(), title: "Untitled draft", meta: "", status: "draft", content: "" };
-}
-const healthy: HealthState = { status: "healthy", label: "Checking system status", issues: [] };

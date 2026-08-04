@@ -1,43 +1,63 @@
 "use client";
 
-import { useState } from "react";
+import { Button } from "@/components/Button/Button";
+import { Textarea } from "@/components/FormField/FormField";
 import { Send } from "lucide-react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import styles from "./MessageComposer.module.css";
 
-interface Props { agent: string; onSend: (message: string) => Promise<void> | void; }
+interface Props {
+  projectId: string;
+  agent: string;
+  initialFocus?: boolean;
+  onSend: (message: string, submissionId: string) => Promise<void> | void;
+}
 
-export function MessageComposer({ agent, onSend }: Props) {
+export function MessageComposer({ projectId, agent, initialFocus = true, onSend }: Props) {
   const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-  async function send() {
-    if (!message.trim() || sending) return;
-    setSending(true);
-    setError("");
-    try {
-      await onSend(message.trim());
-      setMessage("");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Message failed");
-    } finally {
-      setSending(false);
-    }
+  const submissionId = useRef("");
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const generatedId = useId();
+  const fieldId = `agent-message-${generatedId}`;
+  useLayoutEffect(() => {
+    const node = textarea.current;
+    if (!node) return;
+    node.style.height = "0";
+    node.style.height = `${Math.min(140, Math.max(52, node.scrollHeight))}px`;
+    node.style.overflowY = node.scrollHeight > 140 ? "auto" : "hidden";
+  }, [message]);
+  function send() {
+    if (!message.trim()) return;
+    submissionId.current ||= `${encodeURIComponent(projectId)}:${crypto.randomUUID()}`;
+    const body = message.trim();
+    const id = submissionId.current;
+    setMessage("");
+    submissionId.current = "";
+    void onSend(body, id);
+    requestAnimationFrame(() => textarea.current?.focus());
   }
   function submit(event: React.FormEvent) {
     event.preventDefault();
     void send();
   }
+  function changeMessage(value: string) {
+    if (value !== message) {
+      submissionId.current = "";
+    }
+    setMessage(value);
+  }
   return (
-    <form className={styles.form} onSubmit={submit}>
-      <label htmlFor="agent-message">Message {agent}</label>
-      <textarea id="agent-message" aria-keyshortcuts="Control+Enter Meta+Enter" value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => {
+    <form className={styles.form} onSubmit={submit} aria-label={`Send message to ${agent}`} data-message-composer>
+      <label className={styles.srOnly} htmlFor={fieldId}>Message {agent}</label>
+      <Textarea variant="bare" className={styles.textarea} ref={textarea} id={fieldId} data-drawer-initial-focus={initialFocus ? "" : undefined} aria-keyshortcuts="Control+Enter Meta+Enter" value={message} onChange={(event) => changeMessage(event.target.value)} onKeyDown={(event) => {
         if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !event.nativeEvent.isComposing) {
           event.preventDefault();
-          void send();
+          send();
         }
-      }} placeholder="Send a clear request" rows={4} />
-      {error && <p role="alert">{error}</p>}
-      <button disabled={!message.trim() || sending}><Send size={14} />{sending ? "Sending" : "Send message"}</button>
+      }} placeholder={`Message ${agent}...`} rows={1} />
+      <Button className={styles.send} variant="primary" size="icon" aria-label="Send message" title="Send message (Ctrl+Enter)" disabled={!message.trim()}>
+        <Send size={16} aria-hidden="true" />
+      </Button>
     </form>
   );
 }

@@ -4,6 +4,8 @@ use anyhow::Result;
 use cairn_harness::open;
 use clap::{Parser, Subcommand};
 
+mod agent_tool_cli;
+
 #[derive(Parser)]
 #[command(name = "cairn-harness", version, about)]
 struct Cli {
@@ -15,6 +17,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    #[command(hide = true)]
+    Mcp,
+    #[command(hide = true)]
+    AgentTool {
+        #[command(subcommand)]
+        command: agent_tool_cli::Command,
+    },
+    Install,
     Init,
     Ingest,
     Replenish,
@@ -42,21 +52,49 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    Telemetry {
+        #[command(subcommand)]
+        command: Option<TelemetryCommand>,
+        #[arg(long, default_value_t = 24, global = true)]
+        hours: u32,
+        #[arg(long, global = true)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum TelemetryCommand {
+    Inspect { id: String },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
+    if matches!(cli.command, Command::Mcp) {
+        return cairn_harness::mcp_server::run().await;
+    }
+    if let Command::AgentTool { command } = &cli.command {
+        return agent_tool_cli::run(command).await;
+    }
+    if matches!(cli.command, Command::Install) {
+        for file in cairn_harness::skill::install()? {
+            println!("installed {}", file.display());
+        }
+        return Ok(());
+    }
     let harness = open(&cli.config).await?;
     match cli.command {
+        Command::Mcp => unreachable!(),
+        Command::AgentTool { .. } => unreachable!(),
+        Command::Install => unreachable!(),
         Command::Init => {
             harness.bootstrap().await?;
             println!("initialized {}", harness.config().name);
         }
         Command::Ingest => {
             harness.bootstrap().await?;
-            println!("ingested {} TODO(s)", harness.ingest_todos().await?);
+            println!("ingested {} task(s)", harness.ingest_work().await?);
         }
         Command::Replenish => {
             harness.bootstrap().await?;
@@ -99,6 +137,21 @@ async fn main() -> Result<()> {
             } else {
                 print!("{}", harness.transcript(full).await?);
             }
+        }
+        Command::Telemetry {
+            command,
+            hours,
+            json,
+        } => {
+            let id = command.map(|TelemetryCommand::Inspect { id }| id);
+            cairn_harness::telemetry::print(
+                harness.config(),
+                harness.store(),
+                hours,
+                id.as_deref(),
+                json,
+            )
+            .await?;
         }
     }
     Ok(())

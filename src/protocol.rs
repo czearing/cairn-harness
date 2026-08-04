@@ -14,7 +14,6 @@ pub fn parse_output(text: &str) -> Result<AgentOutput> {
         return Ok(AgentOutput {
             summary: "Completed deliverable.".into(),
             deliverable: Some(deliverable.into()),
-            messages: Vec::new(),
             tools: Vec::new(),
             complete: true,
         });
@@ -30,25 +29,20 @@ pub fn parse_output(text: &str) -> Result<AgentOutput> {
         .or_else(|_| serde_json::from_str(&escape_string_controls(payload)))
     {
         Ok(output) => output,
-        Err(_error) if has_no_messages(payload) => AgentOutput {
+        Err(_error) if has_terminal_fields(payload) => AgentOutput {
             summary: "Completed deliverable.".into(),
             deliverable: Some(salvage_deliverable(payload)),
-            messages: Vec::new(),
             tools: Vec::new(),
             complete: true,
         },
         Err(error) => return Err(error).context("invalid agent envelope JSON"),
     };
-    if !output.is_valid() {
-        bail!("agent output contains an em dash");
-    }
-
-    fn has_no_messages(payload: &str) -> bool {
+    fn has_terminal_fields(payload: &str) -> bool {
         let compact: String = payload
             .chars()
             .filter(|character| !character.is_whitespace())
             .collect();
-        compact.contains("\"messages\":[]")
+        compact.contains("\"complete\":true")
     }
 
     fn salvage_deliverable(payload: &str) -> String {
@@ -60,7 +54,7 @@ pub fn parse_output(text: &str) -> Result<AgentOutput> {
             .trim_start_matches(|character: char| character == ':' || character.is_whitespace())
             .trim_start_matches('"');
         let end = value
-            .rfind("\"messages\"")
+            .rfind("\"complete\"")
             .and_then(|index| value[..index].rfind(','))
             .unwrap_or(value.len());
         value[..end]
@@ -112,7 +106,7 @@ mod tests {
     #[test]
     fn parses_marked_json() {
         let text = format!(
-            "noise\n{BEGIN}\n{{\"summary\":\"done\",\"deliverable\":null,\"messages\":[],\"complete\":true}}\n{END}"
+            "noise\n{BEGIN}\n{{\"summary\":\"done\",\"deliverable\":null,\"complete\":true}}\n{END}"
         );
         let output = parse_output(&text).unwrap();
         assert_eq!(output.summary, "done");
@@ -126,9 +120,17 @@ mod tests {
     }
 
     #[test]
+    fn preserves_large_plain_deliverables_without_truncation() {
+        let deliverable = format!("begin:{}:end", "complete-output-".repeat(65_536));
+        let output = parse_output(&deliverable).unwrap();
+
+        assert_eq!(output.deliverable.as_deref(), Some(deliverable.as_str()));
+    }
+
+    #[test]
     fn parses_raw_multiline_strings() {
         let text = format!(
-            "{BEGIN}\n{{\"summary\":\"done\",\"deliverable\":\"line one\nline two\",\"messages\":[],\"complete\":true}}\n{END}"
+            "{BEGIN}\n{{\"summary\":\"done\",\"deliverable\":\"line one\nline two\",\"complete\":true}}\n{END}"
         );
         let output = parse_output(&text).unwrap();
         assert_eq!(output.deliverable.as_deref(), Some("line one\nline two"));
@@ -137,7 +139,7 @@ mod tests {
     #[test]
     fn accepts_waiting_envelope_without_messages() {
         let text = format!(
-            "{BEGIN}\n{{\"summary\":\"Waiting for review.\",\"deliverable\":null,\"messages\":[],\"complete\":false}}\n{END}"
+            "{BEGIN}\n{{\"summary\":\"Waiting for review.\",\"deliverable\":null,\"complete\":false}}\n{END}"
         );
         let output = parse_output(&text).unwrap();
         assert!(output.is_waiting());
@@ -146,7 +148,7 @@ mod tests {
     #[test]
     fn salvages_terminal_prose_with_quotes() {
         let text = format!(
-            "{BEGIN}\n{{\"summary\":\"done\",\"deliverable\":\"She said \"go\".\",\"messages\":[],\"complete\":true}}\n{END}"
+            "{BEGIN}\n{{\"summary\":\"done\",\"deliverable\":\"She said \"go\".\",\"complete\":true}}\n{END}"
         );
         let output = parse_output(&text).unwrap();
         assert!(output.deliverable.unwrap().contains("She said \"go\"."));

@@ -14,6 +14,7 @@ if (-not (Get-Command copilot -ErrorAction SilentlyContinue)) {
 Push-Location $root
 try {
     cargo build --release
+    & (Join-Path $root "target\release\cairn-harness.exe") install
     Push-Location $ui
     try {
         if (-not (Test-Path "node_modules")) {
@@ -21,6 +22,7 @@ try {
         }
         npm run build
         $env:HARNESS_BIN = Join-Path $root "target\release\cairn-harness.exe"
+        $env:HARNESS_PROJECT_ROOT = Join-Path $root "projects"
         if (-not $NoBrowser) {
             $url = "http://127.0.0.1:$Port"
             Start-Job -ScriptBlock {

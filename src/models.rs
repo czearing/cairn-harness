@@ -8,6 +8,10 @@ pub struct WorkerSpec {
     pub role: String,
     pub description: String,
     pub prompt: String,
+    pub model: String,
+    pub leader: String,
+    pub leader_task_limit: u64,
+    pub idea_agents: Vec<String>,
 }
 
 impl WorkerSpec {
@@ -27,20 +31,39 @@ pub struct AgentState {
 }
 
 #[derive(Clone, Debug)]
-pub struct Message {
+pub struct Assignment {
     pub id: String,
-    pub sender: String,
-    pub recipient: String,
+    pub parent_id: Option<String>,
+    pub kind: String,
+    pub source: String,
+    pub creator: String,
+    pub assignee: String,
     pub topic: String,
     pub body: String,
     pub attempts: u32,
+    pub claim_generation: i64,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct OutgoingMessage {
-    pub to: String,
+impl Assignment {
+    pub fn is_message(&self) -> bool {
+        self.kind == "message" || self.source == "message"
+    }
+
+    pub fn is_peer_message(&self) -> bool {
+        self.kind == "message" && self.source == "agent"
+    }
+
+    pub fn is_dashboard_message(&self) -> bool {
+        self.kind == "message" && self.source == "message" && self.creator == "dashboard"
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ChildResult {
+    pub assignee: String,
     pub topic: String,
-    pub body: String,
+    pub status: String,
+    pub result: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -48,8 +71,6 @@ pub struct AgentOutput {
     pub summary: String,
     #[serde(default)]
     pub deliverable: Option<String>,
-    #[serde(default)]
-    pub messages: Vec<OutgoingMessage>,
     #[serde(default)]
     pub tools: Vec<String>,
     #[serde(default)]
@@ -61,7 +82,7 @@ pub struct TranscriptEntry {
     pub sequence: i64,
     pub agent_id: String,
     pub session_id: String,
-    pub inbound_sender: String,
+    pub inbound_creator: String,
     pub inbound_topic: String,
     pub inbound_body: String,
     pub prompt: String,
@@ -77,31 +98,12 @@ pub struct RunRequest {
     pub worker: WorkerSpec,
     pub session_id: String,
     pub prompt: String,
+    pub fresh_session_prompt: Option<String>,
+    pub cancellation: tokio::sync::watch::Receiver<bool>,
 }
 
 impl AgentOutput {
-    pub fn is_actionable(&self) -> bool {
-        (self.complete || !self.messages.is_empty()) && !self.uses_em_dash()
-    }
-
     pub fn is_waiting(&self) -> bool {
-        !self.complete && self.messages.is_empty() && !self.uses_em_dash()
-    }
-
-    pub fn is_valid(&self) -> bool {
-        !self.uses_em_dash()
-    }
-
-    fn uses_em_dash(&self) -> bool {
-        self.summary.contains('\u{2014}')
-            || self
-                .deliverable
-                .as_ref()
-                .is_some_and(|value| value.contains('\u{2014}'))
-            || self.messages.iter().any(|message| {
-                message.topic.contains('\u{2014}')
-                    || message.body.contains('\u{2014}')
-                    || message.to.contains('\u{2014}')
-            })
+        !self.complete
     }
 }

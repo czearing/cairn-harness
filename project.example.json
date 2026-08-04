@@ -2,7 +2,14 @@
   "name": "example-product",
   "root": ".",
   "leader": "pm",
-  "todo_dir": "todos",
+  "leader_task_limit": 3,
+  "idea_agents": [
+    {
+      "agent": "designer",
+      "task_limit": 2,
+      "prompt": "Identify and create the next highest-value product or design task."
+    }
+  ],
   "roles": [
     {
       "name": "pm",

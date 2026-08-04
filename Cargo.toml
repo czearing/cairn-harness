@@ -12,8 +12,9 @@ clap = { version = "4.6.1", features = ["derive"] }
 notify = "8.2.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+sha2 = "0.10.9"
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "sqlite"] }
-tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "process", "sync", "time", "signal"] }
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "process", "sync", "time", "signal", "io-std", "io-util"] }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 uuid = { version = "1.23.5", features = ["v4", "serde"] }

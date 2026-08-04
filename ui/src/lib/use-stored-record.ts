@@ -1,15 +1,15 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { EMPTY_STORED_RECORD, StoredRecordSnapshotCache } from "./stored-record";
 
-const caches = new Map<string, { raw: string; value: Record<string, string> }>();
-const empty: Record<string, string> = {};
+const cache = new StoredRecordSnapshotCache();
 
 export function useStoredRecord(key: string) {
   const value = useSyncExternalStore(
     (callback) => subscribe(key, callback),
     () => snapshot(key),
-    () => empty,
+    () => EMPTY_STORED_RECORD,
   );
   function update(next: Record<string, string>) {
     localStorage.setItem(key, JSON.stringify(next));
@@ -29,10 +29,5 @@ function subscribe(key: string, callback: () => void) {
 
 function snapshot(key: string) {
   const raw = localStorage.getItem(key) || "";
-  const cached = caches.get(key);
-  if (cached?.raw === raw) return cached.value;
-  let value = empty;
-  try { value = JSON.parse(raw || "{}"); } catch {}
-  caches.set(key, { raw, value });
-  return value;
+  return cache.get(key, raw);
 }

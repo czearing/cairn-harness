@@ -1,45 +1,188 @@
 import { watch, type FSWatcher } from "node:fs";
 import type { Project } from "@/lib/types";
+import { conversationVersions } from "./project-conversation-versions";
+import { isDatabase, isRelevantProjectEvent, projectEventAgent } from "./project-event-path";
 
-type Listener = () => void;
+export interface ProjectEvent { projectId: string; conversations: string[]; }
+type Listener = (event: ProjectEvent) => void;
+type DegradedListener = () => void;
 const state = globalThis as typeof globalThis & { harnessEvents?: EventState };
-interface EventState { listeners: Set<Listener>; watchers: Map<string, FSWatcher>; queued: boolean; }
+interface EventState {
+  subscriptions: Map<Listener, Map<string, Project>>;
+  degradedListeners: Map<Listener, DegradedListener>;
+  watchers: Map<string, FSWatcher>;
+  projects: Map<string, Project>;
+  queued: Map<string, ProjectEvent>;
+  versions: Map<string, Map<string, string>>;
+}
+interface EventDependencies {
+  watchProject: (root: string, listener: (event: string, file: string | Buffer | null) => void) => FSWatcher;
+  conversationVersions: (project: Project) => Map<string, string>;
+}
 
 function eventState() {
-  return state.harnessEvents ||= { listeners: new Set(), watchers: new Map(), queued: false };
+  const current = state.harnessEvents ||= createEventState();
+  current.subscriptions ||= new Map();
+  current.degradedListeners ||= new Map();
+  current.projects ||= new Map();
+  return current;
 }
 
-export function subscribeToProjectEvents(projects: Project[], listener: Listener) {
-  const current = eventState();
-  current.listeners.add(listener);
+export function subscribeToProjectEvents(
+  projects: Project[],
+  listener: Listener,
+  onDegraded: DegradedListener = () => {},
+) {
+  return subscribe(eventState(), projects, listener, onDegraded, defaultDependencies);
+}
+
+export function createProjectEventSubscriber(dependencies: EventDependencies) {
+  const current = createEventState();
+  return (projects: Project[], listener: Listener, onDegraded: DegradedListener = () => {}) =>
+    subscribe(current, projects, listener, onDegraded, dependencies);
+}
+
+const defaultDependencies: EventDependencies = {
+  watchProject: (root, listener) => watch(root, { recursive: true }, listener),
+  conversationVersions,
+};
+
+function createEventState(): EventState {
+  return {
+    subscriptions: new Map(),
+    degradedListeners: new Map(),
+    watchers: new Map(),
+    projects: new Map(),
+    queued: new Map(),
+    versions: new Map(),
+  };
+}
+
+function subscribe(
+  current: EventState,
+  projects: Project[],
+  listener: Listener,
+  onDegraded: DegradedListener,
+  dependencies: EventDependencies,
+) {
+  const ownedProjects = new Map(projects.map((project) => [project.root, project]));
+  const previousProjects = current.subscriptions.get(listener);
+  current.subscriptions.delete(listener);
+  current.subscriptions.set(listener, ownedProjects);
+  current.degradedListeners.set(listener, onDegraded);
   for (const project of projects) {
     const root = project.root;
+    current.projects.set(root, project);
+    reconcileVersions(current, project, dependencies.conversationVersions(project));
     if (current.watchers.has(root)) continue;
     try {
-      current.watchers.set(root, watch(root, { recursive: true }, (_event, file) => {
-        if (relevant(String(file || ""), project.workDir)) emit();
-      }));
-    } catch {}
+      const watcher = dependencies.watchProject(root, (_event, file) => {
+        const latest = current.projects.get(root);
+        if (!latest) return;
+        const changed = String(file || "");
+        if (isRelevantProjectEvent(changed, latest.workDir)) emit(current, latest, changed, dependencies.conversationVersions);
+      });
+      current.watchers.set(root, watcher);
+      watcher.on?.("error", () => watcherFailed(current, root, watcher));
+    } catch {
+      onDegraded();
+    }
   }
+  for (const root of previousProjects?.keys() || []) {
+    if (!ownedProjects.has(root)) reconcileRoot(current, root, dependencies);
+  }
+  pruneInactiveRoots(current);
 
-  function relevant(file: string, workDir?: string) {
-    const normalized = file.replaceAll("\\", "/");
-    const database = normalized === ".cairn-harness/harness.db"
-      || normalized === ".cairn-harness/harness.db-wal";
-    return normalized === "project.json"
-      || normalized.startsWith(`${workDir || "work-items"}/`)
-      || normalized.startsWith("todos/")
-      || database;
-  }
-  return () => current.listeners.delete(listener);
+  let subscribed = true;
+  return () => {
+    if (!subscribed) return;
+    subscribed = false;
+    if (current.subscriptions.get(listener) !== ownedProjects) return;
+    current.subscriptions.delete(listener);
+    current.degradedListeners.delete(listener);
+    for (const root of ownedProjects.keys()) reconcileRoot(current, root, dependencies);
+    pruneInactiveRoots(current);
+  };
 }
 
-function emit() {
-  const current = eventState();
-  if (current.queued) return;
-  current.queued = true;
+function watcherFailed(current: EventState, root: string, watcher: FSWatcher) {
+  if (current.watchers.get(root) !== watcher) return;
+  watcher.close();
+  current.watchers.delete(root);
+  for (const [listener, projects] of current.subscriptions) {
+    if (projects.has(root)) current.degradedListeners.get(listener)?.();
+  }
+}
+
+function reconcileRoot(current: EventState, root: string, dependencies: EventDependencies) {
+  let activeProject: Project | undefined;
+  for (const projects of current.subscriptions.values()) activeProject = projects.get(root) || activeProject;
+  if (!activeProject) {
+    releaseRoot(current, root);
+    return;
+  }
+  current.projects.set(root, activeProject);
+  reconcileVersions(current, activeProject, dependencies.conversationVersions(activeProject));
+}
+
+function pruneInactiveRoots(current: EventState) {
+  const activeRoots = new Set([...current.subscriptions.values()].flatMap((projects) => [...projects.keys()]));
+  const storedRoots = new Set([
+    ...current.watchers.keys(),
+    ...current.projects.keys(),
+    ...current.queued.keys(),
+    ...current.versions.keys(),
+  ]);
+  for (const root of storedRoots) if (!activeRoots.has(root)) releaseRoot(current, root);
+}
+
+function releaseRoot(current: EventState, root: string) {
+  current.watchers.get(root)?.close();
+  current.watchers.delete(root);
+  current.projects.delete(root);
+  current.queued.delete(root);
+  current.versions.delete(root);
+}
+
+function reconcileVersions(current: EventState, project: Project, latest: Map<string, string>) {
+  const previous = current.versions.get(project.root);
+  if (!previous) {
+    current.versions.set(project.root, latest);
+    return;
+  }
+  const agents = new Set(project.agents.map((agent) => agent.id));
+  for (const agent of previous.keys()) if (!agents.has(agent)) previous.delete(agent);
+  for (const [agent, version] of latest) if (!previous.has(agent)) previous.set(agent, version);
+}
+
+function emit(
+  current: EventState,
+  project: Project,
+  file: string,
+  readVersions: EventDependencies["conversationVersions"],
+) {
+  const normalized = file.replaceAll("\\", "/");
+  const database = isDatabase(normalized);
+  const eventAgent = projectEventAgent(normalized, project);
+  const previous = current.versions.get(project.root) || new Map();
+  const next = database ? readVersions(project) : previous;
+  const conversations = eventAgent
+    ? [eventAgent]
+    : database
+    ? [...next].filter(([agent, version]) => previous.get(agent) !== version).map(([agent]) => agent)
+    : [];
+  current.versions.set(project.root, next);
+  const queued = current.queued.get(project.root);
+  if (queued) {
+    queued.projectId = project.id;
+    queued.conversations = [...new Set([...queued.conversations, ...conversations])];
+    return;
+  }
+  const event = { projectId: project.id, conversations };
+  current.queued.set(project.root, event);
   queueMicrotask(() => {
-    current.queued = false;
-    for (const listener of current.listeners) listener();
+    if (current.queued.get(project.root) !== event) return;
+    current.queued.delete(project.root);
+    for (const listener of current.subscriptions.keys()) listener(event);
   });
 }

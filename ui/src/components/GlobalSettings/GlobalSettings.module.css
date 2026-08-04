@@ -1,0 +1,12 @@
+.form { display: grid; gap: 18px; }
+.form header { display: grid; gap: 6px; }
+.form h3, .form p { margin: 0; }
+.form h3 { font-size: var(--type-body); }
+.form p { color: var(--text-subtle); font-size: var(--type-body-sm); line-height: 1.5; }
+.form code { color: var(--text-muted); }
+.notice { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.notice strong { font-size: var(--type-body-sm); }
+.notice button { justify-self: start; }
+.notice pre { overflow: auto; white-space: pre-wrap; color: var(--text-subtle); font-size: var(--type-label); }
+.form footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border); }
+.form footer > span { flex: 1; }

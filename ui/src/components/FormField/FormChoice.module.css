@@ -1,0 +1,89 @@
+.choice {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.choice:hover { background: color-mix(in srgb, var(--surface-hover) 72%, transparent); }
+.choice:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 25%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.choice:has(input:focus-visible) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+.choice:has(input:disabled) { opacity: .48; cursor: not-allowed; }
+
+.choice input {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.choiceCopy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.choiceCopy strong {
+  font-size: var(--type-body-sm);
+  font-weight: var(--weight-medium);
+}
+
+.choiceCopy small {
+  color: var(--text-subtle);
+  font-size: var(--type-label);
+  line-height: 1.4;
+}
+
+.radioGroup {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.radioGroup legend {
+  padding: 0;
+  color: var(--text);
+  font-size: var(--type-body-sm);
+  font-weight: var(--weight-label);
+}
+
+.radioGroup > p {
+  margin: -3px 0 0;
+  color: var(--text-subtle);
+  font-size: var(--type-label);
+}
+
+.radioGroup > div { display: grid; gap: 3px; }
+
+.message {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-subtle);
+  font-size: var(--type-label);
+  line-height: 1.45;
+}
+
+.message > span { min-width: 0; }
+.message[data-message-tone="error"] { color: var(--danger); }
+.message[data-message-tone="warning"] { color: var(--warning); }
+.message[data-message-tone="success"] { color: var(--accent); }
+.message[data-message-tone="status"] { color: var(--text-muted); }
+
+.messageAction { flex: 0 0 auto; margin-top: -5px; }
+
+@media (forced-colors: active) {
+  .choice:has(input:focus-visible) { outline: 2px solid Highlight; }
+}

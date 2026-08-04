@@ -19,7 +19,7 @@ async fn parses_protocol_from_an_isolated_shell_process() {
         "param([string]$LogPath)\n\
          $args | Set-Content -Path $LogPath\n\
          Write-Output 'CAIRN_ENVELOPE_BEGIN'\n\
-         Write-Output '{\"summary\":\"shell ok\",\"messages\":[],\"complete\":true}'\n\
+         Write-Output '{\"summary\":\"shell ok\",\"complete\":true}'\n\
          Write-Output 'CAIRN_ENVELOPE_END'\n",
     )
     .unwrap();
@@ -37,9 +37,15 @@ async fn parses_protocol_from_an_isolated_shell_process() {
                 role: "pm".into(),
                 description: "Product lead".into(),
                 prompt: "Lead the work.".into(),
+                model: "gpt-5.6-sol".into(),
+                leader: "pm".into(),
+                leader_task_limit: 3,
+                idea_agents: Vec::new(),
             },
             session_id: Uuid::new_v4().to_string(),
             prompt: "test".into(),
+            fresh_session_prompt: None,
+            cancellation: tokio::sync::watch::channel(false).1,
         })
         .await
         .unwrap();
@@ -61,7 +67,7 @@ async fn one_shell_run_is_bounded_and_argument_safe() {
     std::fs::write(
         &script,
         "Write-Output 'CAIRN_ENVELOPE_BEGIN'\n\
-         Write-Output '{\"summary\":\"one\",\"deliverable\":null,\"messages\":[],\"complete\":true}'\n\
+         Write-Output '{\"summary\":\"one\",\"deliverable\":null,\"complete\":true}'\n\
          Write-Output 'CAIRN_ENVELOPE_END'\n",
     )
     .unwrap();
@@ -83,8 +89,14 @@ fn request(root: &std::path::Path) -> RunRequest {
             role: "pm".into(),
             description: "Lead".into(),
             prompt: "Lead.".into(),
+            model: "gpt-5.6-sol".into(),
+            leader: "pm".into(),
+            leader_task_limit: 3,
+            idea_agents: Vec::new(),
         },
         session_id: Uuid::new_v4().to_string(),
         prompt: "test".into(),
+        fresh_session_prompt: None,
+        cancellation: tokio::sync::watch::channel(false).1,
     }
 }

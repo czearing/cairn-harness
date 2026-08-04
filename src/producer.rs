@@ -4,34 +4,58 @@ use crate::orchestrator::Harness;
 
 impl Harness {
     pub async fn replenish(&self) -> Result<bool> {
-        let Some(producer) = &self.config.producer else {
-            return Ok(false);
-        };
-        if let Some(limit) = self.config.producer_limit
-            && self.store.automatic_seed_count().await? >= limit as i64
-        {
+        let idea_agents = self.config.idea_agents();
+        if idea_agents.is_empty() {
             return Ok(false);
         }
-        if self.store.open_message_count().await? != 0 || self.store.open_work_count().await? != 0 {
-            return Ok(false);
-        }
-        let history = self.store.recent_releases(8).await?;
-        let body = if history.is_empty() {
-            "Create the first unique idea.".into()
-        } else {
-            format!(
-                "Create a new idea unlike these releases:\n\n{}",
-                history.join("\n\n")
-            )
-        };
-        let topic = if self.config.work_path().is_some() {
-            "create-work-item"
-        } else {
-            "create-idea"
-        };
         self.store
-            .enqueue("harness", producer, topic, &body)
+            .set_producer_retry_cooldown(self.config.producer_retry_cooldown_seconds)
             .await?;
-        Ok(true)
+        let mut history = self.store.recent_release_topics(8).await?;
+        for topic in self.store.automatic_root_topics().await? {
+            if !history.contains(&topic) {
+                history.push(topic);
+            }
+        }
+        let terminal = self.store.recent_terminal_automatic_topics(4).await?;
+        let mut created = false;
+        for idea in idea_agents {
+            if self.store.automatic_root_count_for(&idea.agent).await? >= idea.task_limit as i64
+                || self.store.pending_generator_count_for(&idea.agent).await? > 0
+            {
+                continue;
+            }
+            let body = producer_body(&idea.prompt, &history, &terminal);
+            self.store.create_generator(&idea.agent, &body).await?;
+            created = true;
+        }
+
+        fn producer_body(instruction: &str, history: &[String], terminal: &[String]) -> String {
+            let existing = history
+                .iter()
+                .take(4)
+                .map(|topic| topic.chars().take(48).collect::<String>())
+                .collect::<Vec<_>>();
+            let mut body = instruction.to_string();
+            if !existing.is_empty() {
+                body.push_str(&format!("\nExisting topics: {}", existing.join("; ")));
+            }
+            if !terminal.is_empty() {
+                let terminal = terminal
+                    .iter()
+                    .map(|outcome| outcome.chars().take(64).collect::<String>())
+                    .collect::<Vec<_>>();
+                body.push_str(&format!(
+                    "\nRecent terminal automatic topics (do not retry yet): {}",
+                    terminal.join("; ")
+                ));
+            }
+            body
+        }
+        Ok(created)
     }
 }
+
+#[cfg(test)]
+#[path = "producer_tests.rs"]
+mod tests;

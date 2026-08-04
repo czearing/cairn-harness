@@ -3,6 +3,15 @@ use chrono::Utc;
 
 use crate::store::Store;
 
+pub(crate) struct ReleaseFinalization {
+    pub task_id: String,
+    pub content_hash: String,
+    pub agent: String,
+    pub topic: String,
+    pub content: String,
+    pub attempts: u32,
+}
+
 impl Store {
     pub async fn add_release(
         &self,
@@ -35,15 +44,14 @@ impl Store {
         Ok(count)
     }
 
-    pub async fn recent_releases(&self, limit: i64) -> Result<Vec<String>> {
-        let rows: Vec<(String,)> =
-            sqlx::query_as("SELECT content FROM releases ORDER BY created_at DESC LIMIT ?")
-                .bind(limit)
-                .fetch_all(&self.pool)
-                .await?;
-        Ok(rows
-            .into_iter()
-            .map(|row| row.0.chars().take(240).collect())
-            .collect())
+    pub async fn recent_release_topics(&self, limit: i64) -> Result<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT topic FROM releases GROUP BY topic
+                 ORDER BY MAX(created_at) DESC LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|row| row.0).collect())
     }
 }

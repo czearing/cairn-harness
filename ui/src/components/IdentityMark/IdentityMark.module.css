@@ -1,0 +1,18 @@
+.mark {
+  --identity-color: var(--accent);
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--identity-color) 44%, var(--border));
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--identity-color) 10%, var(--surface-1));
+  background-position: center;
+  background-size: cover;
+  color: var(--identity-color);
+  font: var(--weight-heading) var(--type-label) var(--font-geist-sans);
+  line-height: 1;
+  user-select: none;
+}
+
+.mark[data-identity-size="sm"] { width: 24px; height: 24px; }
+.mark[data-identity-size="md"] { width: 28px; height: 28px; }

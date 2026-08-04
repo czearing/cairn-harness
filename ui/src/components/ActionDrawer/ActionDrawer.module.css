@@ -1,9 +1,11 @@
-.backdrop { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: flex-end; background: rgb(0 0 0 / 48%); }
-.drawer { width: min(420px, 100%); height: 100%; background: var(--surface-1); border-left: 1px solid var(--border-strong); box-shadow: var(--shadow-panel); animation: enter 160ms ease-out; }
+.backdrop { position: fixed; inset: 0; display: flex; justify-content: flex-end; background: rgb(0 0 0 / 48%); }
+.drawer { display: flex; flex-direction: column; width: min(420px, 100%); height: 100%; overflow: hidden; background: var(--surface-1); border-left: 1px solid var(--border-strong); box-shadow: var(--shadow-panel); animation: enter 160ms ease-out; }
 .wide { width: min(620px, 100%); }
-.drawer > header { height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--border); }
-.drawer h2 { margin: 0; font-size: 13px; font-weight: 600; }
-.drawer header button { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.drawer > header { height: 56px; display: flex; align-items: center; justify-content: flex-end; padding: 0 18px; border-bottom: 1px solid var(--border); }
+.drawer > header h2 { margin-right: auto; }
+.drawer h2 { margin: 0; font-size: var(--type-body); font-weight: var(--weight-heading); }
+.drawer header button { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; color: var(--text-muted); cursor: pointer; }
 .drawer header button:hover { background: var(--surface-hover); color: var(--text); }
-.drawer > div { padding: 18px; }
+.drawer > div { flex: 1; min-height: 0; overflow-y: auto; padding: 18px; }
 @keyframes enter { from { transform: translateX(18px); opacity: .7; } }
+@media (prefers-reduced-motion: reduce) { .drawer { animation: none; } }

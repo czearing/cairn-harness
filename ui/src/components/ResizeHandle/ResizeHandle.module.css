@@ -1,0 +1,66 @@
+.handle {
+  --resize-accent: #78a9e6;
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+  user-select: none;
+}
+
+.handle[data-orientation="vertical"] {
+  width: var(--resize-hit-size, 24px);
+  cursor: col-resize;
+}
+
+.handle[data-orientation="horizontal"] {
+  height: var(--resize-hit-size, 12px);
+  cursor: row-resize;
+}
+
+.handle::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: var(--resize-rule, var(--border-strong));
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.handle[data-orientation="vertical"]::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-.5px);
+}
+
+.handle[data-orientation="horizontal"]::after {
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 2px;
+  transform: translate(-50%, -50%);
+}
+
+.handle:hover::after,
+.handle:focus-visible::after,
+.handle[data-dragging="true"]::after {
+  background: var(--resize-accent);
+}
+
+.handle:focus-visible {
+  outline: 2px solid var(--resize-accent);
+  outline-offset: -3px;
+  box-shadow: none;
+}
+
+@media (forced-colors: active) {
+  .handle:hover::after,
+  .handle:focus-visible::after,
+  .handle[data-dragging="true"]::after {
+    background: Highlight;
+  }
+
+  .handle:focus-visible { outline-color: Highlight; }
+}

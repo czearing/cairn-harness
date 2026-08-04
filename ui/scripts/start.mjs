@@ -1,12 +1,17 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { productionNextEnv } from "./production-next-env.mjs";
+import { createRuntimeDist, removeRuntimeDist } from "./runtime-dist.mjs";
 
 process.env.HARNESS_ENABLE_SUPERVISOR ??= "1";
 process.env.HARNESS_DISCOVER_EXAMPLES ??= "0";
 
+const sourceDist = process.env.NEXT_DIST_DIR || ".next-production";
+const runtimeDist = process.env.HARNESS_RUNTIME_DIST_DIR || `.next-runtime-${process.pid}`;
+const createdRuntime = createRuntimeDist(sourceDist, runtimeDist);
 const next = path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next");
 const child = spawn(process.execPath, [next, "start", ...process.argv.slice(2)], {
-  env: process.env,
+  env: productionNextEnv(process.env, runtimeDist),
   stdio: "inherit",
 });
 
@@ -15,6 +20,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 child.on("exit", (code, signal) => {
+  removeRuntimeDist(runtimeDist, createdRuntime);
   if (signal) process.kill(process.pid, signal);
   else process.exitCode = code ?? 1;
 });

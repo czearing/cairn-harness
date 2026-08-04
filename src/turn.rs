@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use crate::{
-    models::{AgentOutput, Message},
+    models::{AgentOutput, Assignment},
     transcript_store::TurnRecord,
     worker::WorkerContext,
 };
@@ -9,7 +9,7 @@ use crate::{
 #[allow(clippy::too_many_arguments)]
 pub async fn record(
     ctx: &WorkerContext,
-    message: &Message,
+    task: &Assignment,
     session_id: &str,
     prompt: &str,
     output: &AgentOutput,
@@ -19,7 +19,7 @@ pub async fn record(
 ) -> Result<()> {
     ctx.store
         .record_turn(TurnRecord {
-            message,
+            task,
             worker: &ctx.worker,
             session_id,
             prompt,

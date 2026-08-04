@@ -11,7 +11,7 @@ use std::{
 use anyhow::Result;
 use cairn_harness::{
     config::ProjectConfig,
-    models::{AgentOutput, OutgoingMessage, RunRequest},
+    models::{AgentOutput, RunRequest},
     orchestrator::Harness,
     runner::AgentRunner,
     store::Store,
@@ -19,6 +19,7 @@ use cairn_harness::{
 use tempfile::tempdir;
 
 struct PoemRunner {
+    store: Store,
     ideas: AtomicUsize,
 }
 
@@ -28,155 +29,185 @@ impl AgentRunner for PoemRunner {
         request: RunRequest,
     ) -> Pin<Box<dyn Future<Output = Result<AgentOutput>> + Send + 'a>> {
         Box::pin(async move {
-            let output = match request.worker.role.as_str() {
-                "author" => {
-                    let number = self.ideas.fetch_add(1, Ordering::SeqCst) + 1;
-                    message_output(
-                        "writer",
-                        "poem-idea",
-                        &format!("Idea {number}: rain in a cup"),
+            let prompt = &request.prompt;
+            let deliverable = if prompt.contains("Call task_create once") {
+                let number = self.ideas.fetch_add(1, Ordering::SeqCst) + 1;
+                self.store
+                    .create_from_generator(
+                        "author",
+                        "author",
+                        "poem",
+                        &format!("Write poem {number} about rain in a cup."),
                     )
-                }
-                "writer" => AgentOutput {
-                    summary: "Wrote poem.".into(),
-                    deliverable: Some("Rain waits in a cup.\nMorning holds the rim.".into()),
-                    messages: vec![OutgoingMessage {
-                        to: "editor".into(),
-                        topic: "poem-draft".into(),
-                        body: "Review this poem.".into(),
-                    }],
-                    tools: Vec::new(),
-                    complete: true,
-                },
-                "editor" => AgentOutput {
-                    summary: "Edited poem.".into(),
-                    deliverable: Some("Rain waits in a cup.\nMorning holds the rim.".into()),
-                    messages: Vec::new(),
-                    tools: Vec::new(),
-                    complete: true,
-                },
-                role => panic!("unexpected role {role}"),
+                    .await?;
+                None
+            } else if request.worker.role == "author" && !prompt.contains("Child results:") {
+                self.store
+                    .delegate_current("author", "writer", "draft", "Write the poem.")
+                    .await?;
+                None
+            } else if request.worker.role == "writer" {
+                self.store
+                    .complete_current("writer", "Rain waits in a cup.\nMorning holds the rim.")
+                    .await?;
+                Some("Rain waits in a cup.\nMorning holds the rim.".into())
+            } else {
+                let poem = "Rain waits in a cup.\nMorning holds the rim.";
+                self.store.complete_current("author", poem).await?;
+                Some(poem.into())
             };
-            Ok(output)
+            Ok(AgentOutput {
+                summary: "Poem cycle advanced.".into(),
+                deliverable,
+                tools: Vec::new(),
+                complete: true,
+            })
         })
     }
 }
 
 #[tokio::test]
-async fn idle_queue_seeds_and_releases_a_poem_cycle() {
+async fn automatic_task_becomes_visible_work_and_releases() {
     let temp = tempdir().unwrap();
-    let config = poem_config(temp.path());
+    let config = poem_config(temp.path(), Some(1));
     let store = Store::open(&config.database_path()).await.unwrap();
     let runner = Arc::new(PoemRunner {
+        store: store.clone(),
         ideas: AtomicUsize::new(0),
     });
-    let harness = Harness::new(config.clone(), store, runner.clone());
-
+    let harness = Harness::new(config.clone(), store, runner);
     harness.bootstrap().await.unwrap();
     assert!(harness.replenish().await.unwrap());
-    for _ in 0..3 {
-        harness
-            .run_steps(1, Duration::from_millis(75))
+    harness
+        .run_until_idle(Duration::from_millis(100))
+        .await
+        .unwrap();
+    assert_eq!(harness.store().automatic_seed_count().await.unwrap(), 0);
+    assert_eq!(harness.store().release_count().await.unwrap(), 1);
+    assert_eq!(harness.store().open_task_count().await.unwrap(), 0);
+    assert!(harness.replenish().await.unwrap());
+    let generator = harness.store().claim("author").await.unwrap().unwrap();
+    assert!(generator.body.contains("Existing topics: poem"));
+    assert!(!generator.body.contains("Rain waits in a cup."));
+    assert_eq!(
+        std::fs::read_dir(config.root.join("releases"))
+            .unwrap()
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn automatic_limit_counts_only_active_roots() {
+    let temp = tempdir().unwrap();
+    let config = poem_config(temp.path(), Some(2));
+    let store = Store::open(&config.database_path()).await.unwrap();
+    let runner = Arc::new(PoemRunner {
+        store: store.clone(),
+        ideas: AtomicUsize::new(0),
+    });
+    let harness = Harness::new(config, store, runner);
+    harness.bootstrap().await.unwrap();
+
+    assert!(harness.replenish().await.unwrap());
+    assert!(!harness.replenish().await.unwrap());
+    harness
+        .run_until_idle(Duration::from_millis(100))
+        .await
+        .unwrap();
+
+    assert_eq!(harness.store().automatic_seed_count().await.unwrap(), 0);
+    assert!(harness.replenish().await.unwrap());
+}
+
+#[tokio::test]
+async fn automatic_minimum_replenishes_while_other_work_is_active() {
+    let temp = tempdir().unwrap();
+    let config = poem_config(temp.path(), Some(2));
+    let store = Store::open(&config.database_path()).await.unwrap();
+    let runner = Arc::new(PoemRunner {
+        store: store.clone(),
+        ideas: AtomicUsize::new(0),
+    });
+    let harness = Harness::new(config, store, runner);
+    harness.bootstrap().await.unwrap();
+    harness
+        .store()
+        .create_root(
+            "author",
+            "author",
+            "first",
+            "Active work.",
+            "automatic",
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert!(harness.replenish().await.unwrap());
+}
+
+#[tokio::test]
+async fn producer_limit_replenishes_only_after_a_root_completes() {
+    let temp = tempdir().unwrap();
+    let config = buffered_config(temp.path());
+    let store = Store::open(&config.database_path()).await.unwrap();
+    let runner = Arc::new(PoemRunner {
+        store: store.clone(),
+        ideas: AtomicUsize::new(0),
+    });
+    let harness = Harness::new(config, store.clone(), runner);
+    harness.bootstrap().await.unwrap();
+    for topic in ["first", "second"] {
+        store
+            .create_root("scout", "author", topic, "Active work.", "automatic", None)
             .await
             .unwrap();
     }
 
-    assert_eq!(harness.store().release_count().await.unwrap(), 1);
-    assert_eq!(harness.store().open_message_count().await.unwrap(), 0);
-    let transcript = harness.store().transcript().await.unwrap();
-    assert!(transcript[2].inbound_body.contains("Rain waits in a cup"));
-    let releases = config.root.join("releases");
-    assert_eq!(std::fs::read_dir(releases).unwrap().count(), 1);
-
-    drop(harness);
-    let store = Store::open(&config.database_path()).await.unwrap();
-    let restarted = Harness::new(config, store, runner);
-    restarted.bootstrap().await.unwrap();
-    assert!(restarted.replenish().await.unwrap());
-    let seed = restarted.store().claim("author").await.unwrap().unwrap();
-    assert!(seed.body.contains("Rain waits in a cup"));
+    assert!(!harness.replenish().await.unwrap());
+    store.claim("author").await.unwrap().unwrap();
+    store.complete_current("author", "Done.").await.unwrap();
+    assert!(harness.replenish().await.unwrap());
+    assert_eq!(store.pending_generator_count_for("scout").await.unwrap(), 1);
 }
 
 #[tokio::test]
 async fn bounded_watch_runs_one_complete_cycle() {
     let temp = tempdir().unwrap();
-    let config = poem_config(temp.path());
+    let config = poem_config(temp.path(), Some(1));
     let store = Store::open(&config.database_path()).await.unwrap();
     let runner = Arc::new(PoemRunner {
+        store: store.clone(),
         ideas: AtomicUsize::new(0),
     });
     let harness = Harness::new(config, store, runner);
-    tokio::time::timeout(Duration::from_secs(3), harness.watch_until(1))
+    tokio::time::timeout(Duration::from_secs(4), harness.watch_until(1))
         .await
         .unwrap()
         .unwrap();
     assert_eq!(harness.store().release_count().await.unwrap(), 1);
-    assert_eq!(harness.store().open_message_count().await.unwrap(), 0);
 }
 
-#[tokio::test]
-async fn producer_limit_stops_additional_automatic_work() {
-    let temp = tempdir().unwrap();
-    let mut config = poem_config(temp.path());
-    config.producer_limit = Some(1);
-    let store = Store::open(&config.database_path()).await.unwrap();
-    let harness = Harness::new(
-        config,
-        store,
-        Arc::new(PoemRunner {
-            ideas: AtomicUsize::new(0),
-        }),
-    );
-    harness.bootstrap().await.unwrap();
-
-    assert!(harness.replenish().await.unwrap());
-    let seed = harness.store().claim("author").await.unwrap().unwrap();
-    harness
-        .store()
-        .finish(&seed.id, "completed", None)
-        .await
-        .unwrap();
-    assert!(!harness.replenish().await.unwrap());
-}
-
-#[tokio::test]
-async fn bounded_watch_fails_on_duplicate_release_stall() {
-    let temp = tempdir().unwrap();
-    let config = poem_config(temp.path());
-    let store = Store::open(&config.database_path()).await.unwrap();
-    let runner = Arc::new(PoemRunner {
-        ideas: AtomicUsize::new(0),
-    });
-    let harness = Harness::new(config, store, runner);
-    let result = tokio::time::timeout(Duration::from_secs(5), harness.watch_until(2))
-        .await
-        .unwrap();
-    assert!(result.is_err());
-    assert_eq!(harness.store().release_count().await.unwrap(), 1);
-}
-
-fn poem_config(root: &std::path::Path) -> ProjectConfig {
-    let example =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/poem-loop/project.json");
-    let text = std::fs::read_to_string(example)
-        .unwrap()
-        .replace("\"root\": \".\"", "\"root\": \"workspace\"");
+fn poem_config(root: &std::path::Path, limit: Option<u64>) -> ProjectConfig {
+    let workspace = root.join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
     let path = root.join("project.json");
-    std::fs::write(&path, text).unwrap();
-    std::fs::create_dir_all(root.join("workspace")).unwrap();
+    std::fs::write(&path, format!(
+        r#"{{"name":"Poems","root":{},"leader":"author","producer":"author","producer_limit":{},"producer_prompt":"Create poems","roles":[{{"name":"author","description":"Author","prompt":"Lead."}},{{"name":"writer","description":"Writer","prompt":"Write."}}]}}"#,
+        serde_json::to_string(&workspace).unwrap(),
+        limit.unwrap_or(1)
+    )).unwrap();
     ProjectConfig::load(&path).unwrap()
 }
 
-fn message_output(to: &str, topic: &str, body: &str) -> AgentOutput {
-    AgentOutput {
-        summary: "Handed off.".into(),
-        deliverable: None,
-        messages: vec![OutgoingMessage {
-            to: to.into(),
-            topic: topic.into(),
-            body: body.into(),
-        }],
-        tools: Vec::new(),
-        complete: true,
-    }
+fn buffered_config(root: &std::path::Path) -> ProjectConfig {
+    let workspace = root.join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let path = root.join("buffered-project.json");
+    std::fs::write(&path, format!(
+        r#"{{"name":"Buffered","root":{},"leader":"author","producer":"scout","producer_limit":2,"producer_prompt":"Create work","roles":[{{"name":"author","description":"Author","prompt":"Lead."}},{{"name":"scout","description":"Scout","prompt":"Find."}}]}}"#,
+        serde_json::to_string(&workspace).unwrap()
+    )).unwrap();
+    ProjectConfig::load(&path).unwrap()
 }

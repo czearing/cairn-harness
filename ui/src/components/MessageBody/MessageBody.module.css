@@ -1,15 +1,19 @@
+.markdown { min-width: 0; max-width: 44rem; }
 .markdown > :first-child { margin-top: 0; }
 .markdown > :last-child { margin-bottom: 0; }
-.markdown p, .markdown li { font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.markdown p, .markdown li { font-size: var(--type-body-lg); line-height: 1.55; overflow-wrap: anywhere; }
 .markdown ul, .markdown ol { padding-left: 20px; }
-.markdown h1, .markdown h2, .markdown h3 { margin: 14px 0 7px; font-size: 13px; }
+.markdown h1, .markdown h2, .markdown h3 { margin: 14px 0 7px; font-size: var(--type-body-lg); }
 .markdown a { color: var(--accent); text-underline-offset: 2px; }
 .markdown blockquote { margin: 10px 0; padding-left: 10px; border-left: 2px solid var(--border-strong); color: var(--text-muted); }
-.markdown code, .code { font: 10px/1.55 var(--font-geist-mono); }
+.markdown code, .code { font: var(--type-label)/1.55 var(--font-geist-mono); }
 .markdown code { padding: 2px 4px; border-radius: 4px; background: var(--canvas); }
 .markdown pre, .code { overflow: auto; margin: 8px 0 0; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--canvas); white-space: pre-wrap; }
-.markdown table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.tableScroll { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+.tableScroll table { width: max-content; min-width: 100%; max-width: none; border-collapse: collapse; font-size: var(--type-body-sm); }
 .markdown th, .markdown td { padding: 6px; border: 1px solid var(--border); text-align: left; }
-.details { color: var(--text-muted); font-size: 11px; }
-.details summary { cursor: pointer; color: var(--text-subtle); font: 9px var(--font-geist-mono); }
+.details { color: var(--text-muted); font-size: var(--type-body-sm); }
+.details summary { cursor: pointer; color: var(--text-subtle); font: var(--type-caption) var(--font-geist-mono); }
 .details[open] summary { margin-bottom: 8px; }
+.compact p, .compact li { font-size: var(--type-body-sm); line-height: 1.5; }
+.compact h1, .compact h2, .compact h3 { font-size: var(--type-body); }

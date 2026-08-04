@@ -1,0 +1,28 @@
+.pane {
+  --pane-background: #0d0f11;
+  min-width: 0;
+  min-height: 0;
+  color: var(--text);
+  background: var(--pane-background);
+}
+
+.pane[data-pane-tone="navigation"] { --pane-background: #0c0e10; }
+.pane[data-pane-tone="workspace"] { --pane-background: #0f1114; }
+
+.header {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.body {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.footer {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+.sectionLabel { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 28px; margin: 0 0 7px; padding: 0 0 0 8px; color: var(--text-subtle); font-size: var(--type-caption); font-weight: var(--weight-label); letter-spacing: .07em; text-transform: uppercase; }
+

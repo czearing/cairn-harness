@@ -15,9 +15,13 @@
 
 # next.js
 /.next/
+/.next-*
+/.artifacts-*
 storybook-static
 .e2e
+/.e2e-*
 test-results
+/test-results-*
 playwright-report/
 /out/
 

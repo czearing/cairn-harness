@@ -1,0 +1,82 @@
+.workspace { grid-column: 2; grid-row: 1; min-width: 0; height: 100%; overflow: auto; padding: 20px clamp(20px, 3vw, 44px) 72px; }
+.header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; margin: 0 0 20px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.back { justify-self: start; }
+.back, .conversation, .fields button, .readOnly button, .actionRow button, .warning button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border); border-radius: 8px; padding: 0 11px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.back:hover, .conversation:hover, .fields button:hover, .readOnly button:hover, .actionRow button:hover { border-color: var(--border-strong); background: var(--surface-hover); color: var(--text); }
+.identity { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.identity > div { min-width: 0; display: grid; gap: 5px; }
+.identity h1 { margin: 0; outline: none; font-size: clamp(22px, 2.4vw, 28px); letter-spacing: -.025em; }
+.identity p { margin: 0; overflow: hidden; color: var(--text-muted); font-size: var(--type-body-sm); line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.sourceBadge { width: fit-content; display: inline-flex; align-items: center; gap: 5px; color: var(--text-subtle); font: var(--weight-label) var(--type-caption) var(--font-geist-mono); letter-spacing: .08em; text-transform: uppercase; }
+.conversation { align-self: center; border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--text); }
+.sourceWorkspace { min-width: 0; }
+.eyebrow { color: var(--text-subtle); font: var(--weight-label) var(--type-caption) var(--font-geist-mono); letter-spacing: .08em; text-transform: uppercase; }
+.settingsRail { position: sticky; z-index: 4; top: 0; min-width: 0; display: flex; align-items: center; gap: 14px; margin: 0 0 24px; padding: 8px 0; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--canvas) 94%, transparent); backdrop-filter: blur(14px); }
+.settingsTabs { min-width: 0; display: flex; align-items: center; gap: 4px; overflow-x: auto; }
+.settingsTabs button { flex: 0 0 auto; min-height: 40px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid transparent; border-radius: 8px; padding: 0 11px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.settingsTabs button strong { color: inherit; font-size: var(--type-body-sm); font-weight: var(--weight-label); }
+.settingsTabs button:hover { background: var(--surface-hover); color: var(--text); }
+.settingsTabs button[aria-selected="true"] { border-color: color-mix(in srgb, var(--accent) 34%, var(--border)); background: color-mix(in srgb, var(--accent) 9%, var(--surface-2)); color: var(--text); }
+.settingsTabs button[aria-selected="true"] svg { color: var(--accent); }
+.railSaveState { min-width: 0; display: grid; gap: 4px; margin-left: auto; }
+.railSaveState small { color: var(--danger); font: var(--type-label)/1.4 var(--font-geist-sans); }
+.settingsPanels { min-width: 0; }
+.settingsPanel { min-width: 0; }
+.settingsPanel[hidden] { display: none; }
+.panelHeader { padding: 0 0 16px; border-bottom: 1px solid var(--border); }
+.panelHeader h2, .settingSection h3, .panel h2, .readOnly h2 { margin: 0; letter-spacing: -.02em; }
+.panelHeader h2, .panel h2, .readOnly h2 { font-size: var(--type-title-sm); }
+.panelHeader p, .panel p, .readOnly p, .fields p { margin: 4px 0 0; color: var(--text-muted); font-size: var(--type-body-sm); line-height: 1.5; }
+.promptSurface { padding: 18px 0 0; }
+.settingsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.settingsGrid > :only-child { grid-column: 1 / -1; width: 100%; max-width: 640px; }
+.settingSection { min-width: 0; padding: 20px; }
+.settingSection + .settingSection { border-left: 1px solid var(--border); }
+.settingSection h3 { font-size: var(--type-body); }
+.fields { display: grid; gap: 12px; padding-top: 14px; }
+.preview { padding: 10px; border-radius: 8px; background: var(--surface-2); }
+.runtimeActions { padding: 20px 0; }
+.runtimeBody { display: grid; gap: 14px; }
+.readOnly { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; padding: 22px; border: 1px solid color-mix(in srgb, var(--info) 34%, var(--border)); border-radius: 14px; background: color-mix(in srgb, var(--info) 6%, var(--surface-1)); }
+.readOnly > div > span { display: inline-flex; align-items: center; gap: 5px; color: var(--info); font: var(--weight-label) var(--type-caption) var(--font-geist-mono); text-transform: uppercase; letter-spacing: .07em; }
+.copyIcon { width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--info) 42%, var(--border)); border-radius: 12px; background: var(--surface-2); color: var(--info); }
+.readOnly button { color: var(--text); }
+.copyGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.panel { padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); }
+.facts { display: grid; gap: 0; margin: 16px 0 0; }
+.facts div { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+.facts dt { color: var(--text-subtle); font-size: var(--type-label); }
+.facts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: var(--type-body-sm); }
+.warning { padding: 14px; border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--warning) 6%, var(--surface-1)); }
+.warning strong { font-size: var(--type-body-sm); }
+.actionRow { display: flex; flex-wrap: wrap; gap: 8px; }
+.actionRow .dangerButton { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
+.error { color: var(--danger) !important; }
+.back:focus-visible, .conversation:focus-visible, .settingsTabs button:focus-visible, .readOnly button:focus-visible, .actionRow button:focus-visible { outline: 2px solid #78a9e6; outline-offset: 2px; }
+@media (max-width: 1050px) { .workspace { height: auto; overflow: visible; } }
+@media (max-width: 900px) {
+  .settingsRail { position: sticky; }
+}
+@media (max-width: 720px) {
+  .workspace { width: 100%; padding: 18px 14px 48px; }
+  .header { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .conversation { width: auto; min-height: 44px; margin-left: auto; }
+  .identity { order: 3; width: 100%; }
+  .settingsRail { flex-wrap: wrap; margin-inline: -14px; padding-inline: 14px; }
+  .settingsTabs { width: 100%; }
+  .settingsTabs button { min-height: 44px; padding-inline: 10px; }
+  .settingsTabs button svg { display: none; }
+  .railSaveState { width: 100%; margin-left: 0; }
+  .panelHeader { padding-bottom: 14px; }
+  .promptSurface { padding-top: 14px; }
+  .settingsGrid { grid-template-columns: 1fr; }
+  .settingsGrid > :only-child { grid-column: auto; max-width: none; }
+  .settingSection { padding: 18px 0; }
+  .settingSection + .settingSection { border-top: 1px solid var(--border); border-left: 0; }
+  .runtimeActions { padding-top: 18px; }
+  .readOnly { grid-template-columns: 1fr; }
+  .readOnly button { width: 100%; min-height: 44px; }
+  .copyGrid { grid-template-columns: 1fr; }
+  .actionRow { display: grid; }
+  .actionRow button { min-height: 44px; }
+}

@@ -2,50 +2,347 @@ use std::fmt::Write;
 
 use crate::{
     config::ProjectConfig,
-    models::{AgentState, Message, WorkerSpec},
-    protocol::{BEGIN, END},
+    models::{Assignment, ChildResult, WorkerSpec},
 };
 
 pub fn build(
     config: &ProjectConfig,
     worker: &WorkerSpec,
-    states: &[AgentState],
-    message: &Message,
+    task: &Assignment,
+    children: &[ChildResult],
+    runtime_context: &str,
 ) -> String {
     let mut prompt = String::new();
-    writeln!(prompt, "Project: {}", config.name).unwrap();
-    writeln!(prompt, "Agent: {}", worker.id).unwrap();
+    let leader_conversation = task.is_dashboard_message() && worker.id == config.leader();
+    if leader_conversation {
+        writeln!(
+            prompt,
+            "<system_reminder>\nDirect conversation mode. Answer Caleb conversationally. Do not treat this message as project work, run the repository workflow, or use tools unless he explicitly asks for implementation or task creation. When he asks for work, load the required Cairn Harness skill, confirm GET /api/projects with PowerShell, then POST one complete task to /api/projects/{{projectId}}/work-items. Do not stop after loading the skill and do not depend on the deferred task_create tool. Never use sql, todos, todo_deps, or inbox_entries as a work queue, and never claim work is queued unless the work-items POST succeeded. Never expose private chain-of-thought; share concise rationale, visible progress, and outcomes.\n</system_reminder>"
+        )
+        .unwrap();
+    }
     writeln!(prompt, "Role: {}. {}", worker.description, worker.prompt).unwrap();
-    writeln!(prompt, "Team:").unwrap();
-    for teammate in config.workers() {
-        writeln!(prompt, "{}: {}", teammate.id, teammate.description).unwrap();
-    }
-    writeln!(prompt, "Activity:").unwrap();
-    for state in states {
-        writeln!(
-            prompt,
-            "{}: {} ({})",
-            state.agent_id,
-            state.status,
-            state.current_topic.as_deref().unwrap_or("idle")
-        )
-        .unwrap();
-    }
-    writeln!(prompt, "From: {}", message.sender).unwrap();
-    writeln!(prompt, "Topic: {}", message.topic).unwrap();
-    writeln!(prompt, "Input:\n{}", message.body).unwrap();
-    if worker.id == config.leader() && message.topic == "work-item" {
-        writeln!(
-            prompt,
-            "Lead through the team. Delegate meaningful specialist portions to relevant teammates by default, then synthesize their results. Work alone only when no teammate role is relevant. Start each TODO file for this task with `parent: {}`.",
-            message.id
-        )
-        .unwrap();
+    writeln!(
+        prompt,
+        "Use repository-native search tools. Start from changed files, referenced symbols, and exact import targets. Never recursively scan a drive, user profile, or workspace parent. Never scan a dependency tree, build output, or an entire monorepo; constrain each search to exact source or package directories, use narrow globs, and split broad queries."
+    )
+    .unwrap();
+    let peers: Vec<_> = config
+        .workers()
+        .into_iter()
+        .filter(|peer| peer.id != worker.id)
+        .map(|peer| format!("{}={}", peer.id, peer.description))
+        .collect();
+    if !peers.is_empty() {
+        writeln!(prompt, "Peers: {}", peers.join("; ")).unwrap();
     }
     writeln!(
         prompt,
-        "Return one JSON envelope. No em dashes.\n{BEGIN}\n{{\"summary\":\"...\",\"deliverable\":\"... or null\",\"messages\":[{{\"to\":\"agent\",\"topic\":\"...\",\"body\":\"...\"}}],\"complete\":true}}\n{END}"
+        "{} from {} [{}]\n{}",
+        task.kind, task.creator, task.topic, task.body
     )
     .unwrap();
+    if !runtime_context.is_empty() {
+        writeln!(prompt, "Runtime context JSON:\n{runtime_context}").unwrap();
+    }
+    if !children.is_empty() {
+        writeln!(prompt, "Child results:").unwrap();
+        for child in children {
+            writeln!(
+                prompt,
+                "{} / {} / {}:\n{}",
+                child.assignee, child.topic, child.status, child.result
+            )
+            .unwrap();
+        }
+    }
+    if leader_conversation {
+        writeln!(
+            prompt,
+            "This is a direct message from Caleb. Reply directly and naturally. Do not delegate, create work, or inspect the repository unless his message explicitly requests it. For explicit work, finish skill loading and use the supported Harness GET /api/projects plus POST /work-items flow exactly once; never substitute sql, session todos, or an unavailable deferred tool. The host closes this conversation turn."
+        )
+        .unwrap();
+    } else if task.kind == "generator" {
+        writeln!(
+            prompt,
+            "Call task_create once with a self-contained task. Do not execute or delegate it."
+        )
+        .unwrap();
+    } else if task.is_peer_message() {
+        writeln!(
+            prompt,
+            "Peer note. Do not delegate or acknowledge. Use message_send only if its sender needs new information; the host closes this note."
+        )
+        .unwrap();
+    } else if worker.id == config.leader() {
+        writeln!(
+            prompt,
+            "Delegate only disjoint work by role with task_delegate and include the complete requirement and acceptance checks. Never call Task, read_agent, write_agent, or list_agents; Harness resumes you when children finish, so do not poll or duplicate their work. When doing work yourself, return the complete result once in your final assistant response."
+        )
+        .unwrap();
+    } else {
+        writeln!(
+            prompt,
+            "Do this assignment yourself and return the complete result once in your final assistant response. Never call Task, read_agent, write_agent, or list_agents; do not delegate, poll, duplicate, relay, or leave a long-lived server running."
+        )
+        .unwrap();
+    }
     prompt
+}
+
+pub fn with_prior_context(prompt: &str, context: &str) -> String {
+    if context.is_empty() {
+        return prompt.to_string();
+    }
+    format!(
+        "<conversation_history>\n{context}</conversation_history>\n\
+         Continue from this complete durable history. Do not ask for details already present above.\n\
+         {prompt}"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+    use crate::{config::ProjectConfig, models::Assignment};
+
+    #[test]
+    fn leader_prompt_is_team_aware_and_names_only_typed_coordination() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        std::fs::create_dir(&root).unwrap();
+        let file = directory.path().join("project.json");
+        std::fs::write(
+            &file,
+            format!(
+                r#"{{"name":"Test","root":{},"leader":"lead","roles":[{{"name":"lead","description":"Lead","prompt":"Lead."}},{{"name":"reviewer","description":"Review","prompt":"Review."}}]}}"#,
+                serde_json::to_string(&root).unwrap()
+            ),
+        )
+        .unwrap();
+        let config = ProjectConfig::load(&file).unwrap();
+        let workers = config.workers();
+        let prompt = build(
+            &config,
+            &workers[0],
+            &Assignment {
+                id: "opaque:root".into(),
+                parent_id: None,
+                kind: "message".into(),
+                source: "manual".into(),
+                creator: "human".into(),
+                assignee: "lead".into(),
+                topic: "goal".into(),
+                body: "Build it.".into(),
+                attempts: 1,
+                claim_generation: 1,
+            },
+            &[],
+            "",
+        );
+
+        assert!(prompt.contains("reviewer=Review"));
+        assert!(prompt.contains("task_delegate"));
+        assert!(prompt.contains("complete requirement and acceptance checks"));
+        assert!(prompt.contains("Harness resumes you when children finish"));
+        assert!(prompt.contains("Never call Task, read_agent, write_agent, or list_agents"));
+        assert!(
+            prompt.contains("Never recursively scan a drive, user profile, or workspace parent")
+        );
+        assert!(
+            prompt
+                .contains("Start from changed files, referenced symbols, and exact import targets")
+        );
+        assert!(prompt.contains("constrain each search to exact source or package directories"));
+        assert!(prompt.contains("return the complete result once"));
+        assert!(!prompt.contains("task_complete"));
+        assert!(!prompt.contains("Activity:"));
+    }
+
+    #[test]
+    fn peer_message_prompt_prevents_acknowledgement_loops() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        std::fs::create_dir(&root).unwrap();
+        let file = directory.path().join("project.json");
+        std::fs::write(
+            &file,
+            format!(
+                r#"{{"name":"Test","root":{},"leader":"lead","roles":[{{"name":"lead","description":"Lead","prompt":"Lead."}},{{"name":"reviewer","description":"Review","prompt":"Review."}}]}}"#,
+                serde_json::to_string(&root).unwrap()
+            ),
+        )
+        .unwrap();
+        let config = ProjectConfig::load(&file).unwrap();
+        let workers = config.workers();
+        let prompt = build(
+            &config,
+            &workers[1],
+            &Assignment {
+                id: "opaque:message".into(),
+                parent_id: None,
+                kind: "message".into(),
+                source: "agent".into(),
+                creator: "lead".into(),
+                assignee: "reviewer".into(),
+                topic: "status".into(),
+                body: "Draft complete.".into(),
+                attempts: 1,
+                claim_generation: 1,
+            },
+            &[],
+            "",
+        );
+
+        assert!(prompt.contains("Peer note"));
+        assert!(prompt.contains("host closes this note"));
+        assert!(!prompt.contains("task_complete"));
+    }
+
+    #[test]
+    fn human_message_to_leader_is_actionable() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        std::fs::create_dir(&root).unwrap();
+        let file = directory.path().join("project.json");
+        std::fs::write(
+            &file,
+            format!(
+                r#"{{"name":"Test","root":{},"leader":"lead","roles":[{{"name":"lead","description":"Lead","prompt":"Lead."}},{{"name":"reviewer","description":"Review","prompt":"Review."}}]}}"#,
+                serde_json::to_string(&root).unwrap()
+            ),
+        )
+        .unwrap();
+        let config = ProjectConfig::load(&file).unwrap();
+        let workers = config.workers();
+        let prompt = build(
+            &config,
+            &workers[0],
+            &Assignment {
+                id: "dashboard-message".into(),
+                parent_id: None,
+                kind: "message".into(),
+                source: "message".into(),
+                creator: "dashboard".into(),
+                assignee: "lead".into(),
+                topic: "dashboard-message".into(),
+                body: "Fix the UI.".into(),
+                attempts: 1,
+                claim_generation: 1,
+            },
+            &[],
+            "",
+        );
+
+        assert!(prompt.starts_with("<system_reminder>"));
+        assert!(prompt.contains("Direct conversation mode"));
+        assert!(prompt.contains("confirm GET /api/projects with PowerShell"));
+        assert!(prompt.contains("POST one complete task"));
+        assert!(prompt.contains("Do not stop after loading the skill"));
+        assert!(prompt.contains("do not depend on the deferred task_create tool"));
+        assert!(
+            prompt.contains("Never use sql, todos, todo_deps, or inbox_entries as a work queue")
+        );
+        assert!(prompt.contains("never claim work is queued unless the work-items POST succeeded"));
+        assert!(prompt.contains(
+            "use the supported Harness GET /api/projects plus POST /work-items flow exactly once"
+        ));
+        assert!(
+            prompt.contains("never substitute sql, session todos, or an unavailable deferred tool")
+        );
+        assert!(prompt.contains("Reply directly and naturally"));
+        assert!(!prompt.contains("task_complete"));
+        assert!(!prompt.contains("Peer note"));
+    }
+
+    #[test]
+    fn human_message_to_specialist_is_a_direct_assignment() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        std::fs::create_dir(&root).unwrap();
+        let file = directory.path().join("project.json");
+        std::fs::write(
+            &file,
+            format!(
+                r#"{{"name":"Test","root":{},"leader":"lead","roles":[{{"name":"lead","description":"Lead","prompt":"Lead."}},{{"name":"livesite","description":"Monitor","prompt":"Validate alerts."}}]}}"#,
+                serde_json::to_string(&root).unwrap()
+            ),
+        )
+        .unwrap();
+        let config = ProjectConfig::load(&file).unwrap();
+        let workers = config.workers();
+        let prompt = build(
+            &config,
+            &workers[1],
+            &Assignment {
+                id: "dashboard-message".into(),
+                parent_id: None,
+                kind: "message".into(),
+                source: "message".into(),
+                creator: "dashboard".into(),
+                assignee: "livesite".into(),
+                topic: "dashboard-message".into(),
+                body: "Validate this build alert.".into(),
+                attempts: 1,
+                claim_generation: 1,
+            },
+            &[],
+            "",
+        );
+
+        assert!(prompt.contains("Validate this build alert."));
+        assert!(prompt.contains("Do this assignment yourself"));
+        assert!(!prompt.contains("Direct conversation mode"));
+        assert!(!prompt.contains("/work-items"));
+    }
+
+    #[test]
+    fn preserves_complete_task_context_without_a_size_limit() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        std::fs::create_dir(&root).unwrap();
+        let file = directory.path().join("project.json");
+        std::fs::write(
+            &file,
+            format!(
+                r#"{{"name":"Test","root":{},"leader":"lead","roles":[{{"name":"lead","description":"Lead","prompt":"Lead."}}]}}"#,
+                serde_json::to_string(&root).unwrap()
+            ),
+        )
+        .unwrap();
+        let config = ProjectConfig::load(&file).unwrap();
+        let body = format!("begin:{}:end", "complete-context-".repeat(32_768));
+        let prompt = build(
+            &config,
+            &config.workers()[0],
+            &Assignment {
+                id: "large-root".into(),
+                parent_id: None,
+                kind: "root".into(),
+                source: "manual".into(),
+                creator: "human".into(),
+                assignee: "lead".into(),
+                topic: "large context".into(),
+                body: body.clone(),
+                attempts: 1,
+                claim_generation: 1,
+            },
+            &[],
+            "",
+        );
+
+        assert!(prompt.contains(&body));
+        assert!(prompt.ends_with('\n'));
+    }
+
+    #[test]
+    fn preserves_complete_prior_context_without_a_size_limit() {
+        let context = format!("begin:{}:end", "prior-context-".repeat(32_768));
+        let prompt = with_prior_context("Current follow-up.", &context);
+
+        assert!(prompt.contains(&context));
+        assert!(prompt.ends_with("Current follow-up."));
+    }
 }

@@ -1,9 +1,9 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 
-const directory = path.join(process.cwd(), ".e2e");
+const directory = path.join(process.cwd(), process.env.PLAYWRIGHT_FIXTURE_DIR || ".e2e");
 const archived = Array.from({ length: 240 }, (_, index) => ({
   type: "assistant.message",
   timestamp: new Date(Date.UTC(2026, 6, 12, 8, 0, index)).toISOString(),
@@ -18,9 +18,7 @@ mkdirSync(path.join(directory, "workspace", ".cairn-harness"), { recursive: true
 mkdirSync(path.join(directory, "workspace", ".cairn-harness", "drafts"), { recursive: true });
 mkdirSync(path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "s0"), { recursive: true });
 mkdirSync(path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "s1"), { recursive: true });
-mkdirSync(path.join(directory, "workspace", "todos"), { recursive: true });
-mkdirSync(path.join(directory, "workspace", "work-items", "in-progress"), { recursive: true });
-mkdirSync(path.join(directory, "workspace", "work-items", "done"), { recursive: true });
+mkdirSync(path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "sentinel"), { recursive: true });
 writeFileSync(path.join(directory, "project.json"), JSON.stringify({
   name: "Persona test",
   root: "workspace",
@@ -32,10 +30,7 @@ writeFileSync(path.join(directory, "project.json"), JSON.stringify({
     { name: "builder", description: "Builder", prompt: "Complete assigned work." },
   ],
 }));
-writeFileSync(path.join(directory, "workspace", "todos", "build.todo"), "to: builder\n\nBuild the launch page.");
 writeFileSync(path.join(directory, "workspace", ".cairn-harness", "drafts", "existing.md"), "Existing draft task.");
-writeFileSync(path.join(directory, "workspace", "work-items", "in-progress", "launch.md"), "Prepare and ship the launch.");
-writeFileSync(path.join(directory, "workspace", "work-items", "done", "research.md"), "Research the launch audience.");
 writeFileSync(
   path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "s0", "events.jsonl"),
   [
@@ -58,25 +53,37 @@ writeFileSync(
     { type: "session.shutdown", timestamp: "2026-07-13T12:03:00Z", data: {} },
   ].map(JSON.stringify).join("\n"),
 );
+writeFileSync(
+  path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "sentinel", "events.jsonl"),
+  Array.from({ length: 4_000 }, (_, index) => JSON.stringify({
+    type: "assistant.message",
+    timestamp: new Date(Date.UTC(2036, 0, 1, 0, 0, index)).toISOString(),
+    data: { content: `Unrelated sentinel ${index}` },
+  })).join("\n"),
+);
+utimesSync(
+  path.join(directory, "workspace", ".cairn-harness", "copilot-home", "lead", "session-state", "sentinel", "events.jsonl"),
+  new Date(1_000),
+  new Date(1_000),
+);
 const db = new DatabaseSync(path.join(directory, "workspace", ".cairn-harness", "harness.db"));
 db.exec(`
   CREATE TABLE agents(agent_id TEXT PRIMARY KEY,role TEXT,session_id TEXT,status TEXT,current_topic TEXT,updated_at TEXT);
-  CREATE TABLE messages(id TEXT PRIMARY KEY,sender TEXT,recipient TEXT,topic TEXT,body TEXT,status TEXT,created_at TEXT);
+  CREATE TABLE tasks(id TEXT PRIMARY KEY,parent_id TEXT,origin_id TEXT,kind TEXT,source TEXT,creator TEXT,assignee TEXT,topic TEXT,body TEXT,result TEXT,status TEXT,attempts INTEGER,error TEXT,created_at TEXT,claimed_at TEXT,completed_at TEXT);
   CREATE TABLE turns(sequence INTEGER PRIMARY KEY,agent_id TEXT,status TEXT,output_json TEXT,completed_at TEXT);
-  CREATE TABLE work_items(id TEXT PRIMARY KEY,path TEXT,message_id TEXT,status TEXT,created_at TEXT);
-  CREATE TABLE todo_files(path TEXT PRIMARY KEY,message_id TEXT,ingested_at TEXT);
+  CREATE TABLE context_resets(agent_id TEXT PRIMARY KEY,cleared_at TEXT NOT NULL);
   CREATE TABLE releases(content_hash TEXT PRIMARY KEY);
+  CREATE TABLE root_task_policy(singleton INTEGER PRIMARY KEY,max_active_tasks INTEGER NOT NULL,leader TEXT NOT NULL);
+  INSERT INTO root_task_policy VALUES(1,0,'lead');
   INSERT INTO agents VALUES('lead','Project lead','s1','working','roadmap','2026-07-13T12:00:00Z');
   INSERT INTO agents VALUES('builder','Builder','s2','idle',NULL,'2026-07-13T12:00:00Z');
-  INSERT INTO work_items VALUES('w1','work-items/in-progress/launch.md','work-message','in-progress','2026-07-13T12:00:00Z');
-  INSERT INTO work_items VALUES('w2','work-items/done/research.md','done-message','done','2026-07-12T12:00:00Z');
-  INSERT INTO todo_files VALUES('todos/build.todo','mtodo','2026-07-13T12:01:00Z');
-  INSERT INTO messages VALUES('m0','dashboard','lead','request','Start with the product accent.','pending','2026-07-13T12:01:00Z');
-  INSERT INTO messages VALUES('work-message','work-items','lead','work-item','Prepare and ship the launch.','pending','2026-07-13T12:00:00Z');
-  INSERT INTO messages VALUES('done-message','work-items','lead','work-item','Research the launch audience.','completed','2026-07-12T12:00:00Z');
-  INSERT INTO messages VALUES('mtodo','todo-folder','builder','todos/build.todo','Build the launch page.','pending','2026-07-13T12:01:05Z');
-  INSERT INTO messages VALUES('m1','lead','builder','handoff','Build the launch page.','completed','2026-07-13T12:01:15Z');
-  INSERT INTO messages VALUES('m2','builder','lead','question','Should the launch include mobile?','pending','2026-07-13T12:01:30Z');
+  INSERT INTO tasks VALUES('m0',NULL,NULL,'message','message','dashboard','lead','request','Start with the product accent.',NULL,'pending',0,NULL,'2026-07-13T12:01:00Z',NULL,NULL);
+  INSERT INTO tasks VALUES('work-message',NULL,NULL,'root','manual','work-items','lead','work-item','Prepare and ship the launch.',NULL,'claimed',1,NULL,'2026-07-13T12:00:00Z','2026-07-13T12:00:01Z',NULL);
+  INSERT INTO tasks VALUES('done-message',NULL,NULL,'root','manual','work-items','lead','work-item','Research the launch audience.','Research complete.','completed',1,NULL,'2026-07-12T12:00:00Z',NULL,'2026-07-12T12:02:00Z');
+  INSERT INTO tasks VALUES('mtodo','work-message',NULL,'delegation','agent','lead','builder','build','Build the launch page.',NULL,'pending',0,NULL,'2026-07-13T12:01:05Z',NULL,NULL);
+  INSERT INTO tasks VALUES('m1','work-message',NULL,'delegation','agent','lead','builder','handoff','Build the launch page.','Built.','completed',1,NULL,'2026-07-13T12:01:15Z',NULL,'2026-07-13T12:01:25Z');
+  INSERT INTO tasks VALUES('m2',NULL,NULL,'message','message','builder','lead','question','Should the launch include mobile?',NULL,'pending',0,NULL,'2026-07-13T12:01:30Z',NULL,NULL);
   INSERT INTO turns VALUES(1,'lead','completed','{"summary":"Delegated launch work.","deliverable":"Launch plan attached."}','2026-07-13T12:02:00Z');
+  INSERT INTO turns VALUES(2,'lead','completed','{"summary":"Focused bounded turn.","deliverable":null}','2026-07-12T08:02:00Z');
 `);
 db.close();

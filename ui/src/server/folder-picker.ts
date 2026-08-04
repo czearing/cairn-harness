@@ -1,14 +1,23 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 
 export function selectFolder(initial: string) {
   if (process.env.HARNESS_FOLDER_PICKER_RESULT) return process.env.HARNESS_FOLDER_PICKER_RESULT;
   const result = process.platform === "win32" ? windows(initial)
     : process.platform === "darwin" ? mac()
     : linux(initial);
-  if (result.status && result.status !== 0) {
-    throw new Error(result.stderr?.trim() || "Folder picker failed");
-  }
-  return result.stdout?.trim() || null;
+  return classifyFolderPickerResult(process.platform, result);
+}
+
+type FolderPickerResult = Pick<SpawnSyncReturns<string>, "error" | "signal" | "status" | "stderr" | "stdout">;
+
+export function classifyFolderPickerResult(platform: NodeJS.Platform, result: FolderPickerResult): string | null {
+  if (result.error) throw result.error;
+  const stdout = result.stdout?.trim() || "";
+  const stderr = result.stderr?.trim() || "";
+  if (result.status === 0) return stdout || null;
+  if (platform === "darwin" && result.status === 1 && /\(-128\)$/.test(stderr)) return null;
+  if (platform !== "win32" && platform !== "darwin" && result.status === 1 && !stderr) return null;
+  throw new Error(stderr || (result.signal ? `Folder picker terminated by ${result.signal}` : "Folder picker failed"));
 }
 
 function windows(initial: string) {

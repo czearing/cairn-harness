@@ -1,4 +1,5 @@
 import { createWorkItem } from "@/server/mutations";
+import { submissionSuccess } from "@/server/task-submission";
 import { cancelWorkItem, deleteWorkItem } from "@/server/work-mutations";
 
 export const runtime = "nodejs";
@@ -7,8 +8,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
   const { projectId } = await params;
   const data = await request.json() as { body?: string };
   if (!data.body?.trim()) return Response.json({ error: "Task is required" }, { status: 400 });
-  createWorkItem(projectId, data.body);
-  return Response.json({ ok: true });
+  return Response.json(submissionSuccess(createWorkItem(projectId, data.body)));
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
