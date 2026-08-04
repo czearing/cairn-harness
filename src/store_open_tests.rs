@@ -33,3 +33,26 @@ async fn existing_wal_database_reopens_while_a_reader_is_active() {
         .unwrap();
     assert_eq!(reopened_mode, "wal");
 }
+
+#[tokio::test]
+async fn pool_serves_every_worker_loop_concurrently() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("harness.db");
+    let store = Store::open(&path).await.unwrap();
+
+    let mut held = Vec::new();
+    for slot in 0..4 {
+        let connection = tokio::time::timeout(Duration::from_secs(2), store.pool.acquire())
+            .await
+            .unwrap_or_else(|_| panic!("pool starved while acquiring connection {slot}"))
+            .unwrap();
+        held.push(connection);
+    }
+
+    let free = tokio::time::timeout(Duration::from_secs(2), store.pool.acquire())
+        .await
+        .expect("pool left no headroom for heartbeat and recovery queries")
+        .unwrap();
+    drop(free);
+    drop(held);
+}

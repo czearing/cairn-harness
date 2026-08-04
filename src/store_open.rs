@@ -21,7 +21,7 @@ pub(crate) async fn open_pool(path: &Path) -> Result<SqlitePool> {
         .create_if_missing(true)
         .busy_timeout(Duration::from_secs(5));
     let pool = SqlitePoolOptions::new()
-        .max_connections(2)
+        .max_connections(8)
         .connect_with(options)
         .await?;
 

@@ -92,14 +92,14 @@ async fn one_task_graph_drives_the_full_delegation_chain() {
     );
     assert!(prompts.iter().any(|prompt| {
         prompt.contains(
-            "Never delegate, poll, duplicate, relay, or leave a long-lived server running",
+            "do not delegate, poll, duplicate, relay, or leave a long-lived server running",
         )
     }));
     assert!(
         prompts
             .iter()
-            .any(|prompt| prompt.contains("Wait for dependencies")
-                && prompt.contains("host will return completed child results"))
+            .any(|prompt| prompt.contains("Delegate only disjoint work by role")
+                && prompt.contains("Harness resumes you when children finish"))
     );
 }
 
