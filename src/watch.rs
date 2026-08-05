@@ -13,22 +13,50 @@ use crate::{
     worker::{self, WorkerContext},
 };
 
+/// How long a standby watcher waits before retrying the ownership slot.
+const STANDBY_RETRY: Duration = Duration::from_secs(5);
+
 pub async fn run(harness: &Harness, release_target: Option<i64>) -> Result<()> {
     let owner = crate::worker_instance::instance_owner();
-    if !harness
-        .store
-        .acquire_worker_instance(&owner, harness.policy.claim_lease_ms)
-        .await?
-    {
-        tracing::warn!(
-            owner = %owner,
-            "another watcher already owns this harness database; exiting without starting workers"
-        );
+    if !acquire_or_standby(harness, &owner, release_target).await? {
         return Ok(());
     }
     let result = run_owned(harness, release_target, &owner).await;
     harness.store.release_worker_instance(&owner).await?;
     result
+}
+
+/// Waits for the exclusive watcher slot instead of exiting immediately.
+///
+/// A losing watcher that exits is restarted by the supervisor within a second,
+/// which turns a duplicate launch into an unbounded respawn storm that contends
+/// on the same SQLite file and starves the real worker. Standing by keeps the
+/// process alive so the supervisor sees it running, and promotes it if the
+/// owner dies. Bounded runs still exit so they cannot hang.
+async fn acquire_or_standby(
+    harness: &Harness,
+    owner: &str,
+    release_target: Option<i64>,
+) -> Result<bool> {
+    let mut announced = false;
+    loop {
+        if harness
+            .store
+            .acquire_worker_instance(owner, harness.policy.claim_lease_ms)
+            .await?
+        {
+            return Ok(true);
+        }
+        if release_target.is_some() {
+            tracing::warn!(owner = %owner, "another watcher owns this harness database; exiting");
+            return Ok(false);
+        }
+        if !announced {
+            announced = true;
+            tracing::warn!(owner = %owner, "another watcher owns this harness database; standing by");
+        }
+        sleep(STANDBY_RETRY).await;
+    }
 }
 
 async fn run_owned(harness: &Harness, release_target: Option<i64>, owner: &str) -> Result<()> {

@@ -97,3 +97,31 @@ async fn a_replaced_watcher_stops_renewing() {
     assert!(!store.renew_worker_instance("host:1").await.unwrap());
     assert!(store.renew_worker_instance("host:2").await.unwrap());
 }
+
+#[tokio::test]
+async fn a_standby_watcher_takes_over_once_the_owner_releases() {
+    let root = tempdir().unwrap();
+    let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+
+    assert!(
+        store
+            .acquire_worker_instance("host:1", 60_000)
+            .await
+            .unwrap()
+    );
+    // A standby retries instead of exiting, so it must stay refused while the
+    // owner holds the slot and be promoted the moment that owner releases it.
+    assert!(
+        !store
+            .acquire_worker_instance("host:2", 60_000)
+            .await
+            .unwrap()
+    );
+    store.release_worker_instance("host:1").await.unwrap();
+    assert!(
+        store
+            .acquire_worker_instance("host:2", 60_000)
+            .await
+            .unwrap()
+    );
+}
