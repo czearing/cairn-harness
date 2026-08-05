@@ -1,4 +1,4 @@
-import { closeSync, existsSync, openSync, readFileSync, statSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { firstExistingPath } from "./binary-selection";
@@ -10,6 +10,7 @@ import { supervisorEnabled, supervisorRestartDelayMs } from "./supervisor-policy
 import { createCachedWorkerProcessResolver, ownsWorkerProcess, readProcessIdentity, withOwnedWorker, type ProcessIdentity, type WorkerRecord } from "./worker-process-identity";
 import { globalSettingsPath } from "./global-settings";
 import { setProjectState, setProjectStateInDatabase } from "./project-state";
+import { ensureWorkspaceStateDirectory } from "./workspace-state";
 import { performProjectPause, performProjectRestart } from "./supervisor-transitions";
 
 export { setProjectStateInDatabase, performProjectPause, performProjectRestart };
@@ -41,7 +42,7 @@ export function ensureProjectRunning(projectId: string) {
   }
   rmSync(recordPath, { force: true });
   const invocation = harnessInvocation(config);
-  mkdirSync(path.dirname(recordPath), { recursive: true });
+  ensureWorkspaceStateDirectory(project.root);
   const logPath = path.join(project.root, ".cairn-harness", "worker.log");
   rotateLog(logPath);
   const log = openSync(logPath, "a");

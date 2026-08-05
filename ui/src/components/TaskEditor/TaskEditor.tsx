@@ -179,19 +179,13 @@ export const TaskEditor = forwardRef<TaskEditorHandle, Props>(function TaskEdito
   }
 
   const statusText = successMessage
-    || (submissionState
-      ? submissionState === "saving" ? "Saving…" : "Starting work…"
-      : createError
-        ? "Work not started"
-        : saveState === "error"
-          ? "Not saved"
-          : "");
-  const statusKind: StatusKind = saveError || createError
-    ? "failed"
-    : submissionState
-      ? "working"
-      : "saved";
-  const showStatus = Boolean(successMessage || submissionState || createError || saveError);
+    || (createError
+      ? "Work not started"
+      : saveState === "error"
+        ? "Not saved"
+        : "");
+  const statusKind: StatusKind = saveError || createError ? "failed" : "saved";
+  const showStatus = Boolean(successMessage || createError || saveError);
   return (
     <section className={styles.workspace} aria-label="Draft editor">
       <MarkdownEditor
@@ -209,7 +203,7 @@ export const TaskEditor = forwardRef<TaskEditorHandle, Props>(function TaskEdito
       <footer className={styles.footer}>
         <div className={styles.feedback}>
           {showStatus && <StatusIndicator status={statusKind} label={statusText} size="compact" announce />}
-          {(saveError || createError) && <Button variant="secondary" size="compact" className={styles.retry} type="button" title={saveError || createError} onClick={() => void (saveError ? saveLatest() : createTask())}>Retry</Button>}
+          {(saveError || createError) && <Button variant="danger" size="compact" className={styles.retry} type="button" title={saveError || createError} onClick={() => void (saveError ? saveLatest() : createTask())}>Retry</Button>}
         </div>
         <Button
           variant="primary"
@@ -217,6 +211,7 @@ export const TaskEditor = forwardRef<TaskEditorHandle, Props>(function TaskEdito
           type="button"
           aria-keyshortcuts="Control+Enter Meta+Enter"
           title="Start work (Ctrl+Enter)"
+          loading={Boolean(submissionState)}
           disabled={!canCreate}
           onClick={() => void createTask()}
         >

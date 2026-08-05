@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import path from "node:path";
 import { writeProjectConfig } from "./project-config-write";
+import { ensureWorkspaceStateDirectory } from "./workspace-state";
 
 interface ProjectRegistration {
   id: string;
@@ -29,7 +30,7 @@ export function createProject(
   const existing = getProjectRegistrations().find((project) => workspaceIdentity(project.root) === workspaceIdentity(root));
   if (existing) throw new Error(`workspace is already used by ${existing.name}`);
 
-  mkdirSync(path.join(root, ".cairn-harness"), { recursive: true });
+  ensureWorkspaceStateDirectory(root);
   mkdirSync(path.join(root, "work-items", "inbox"), { recursive: true });
   mkdirSync(projectRoot(), { recursive: true });
   mkdirSync(directory);

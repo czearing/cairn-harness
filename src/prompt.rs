@@ -5,6 +5,8 @@ use crate::{
     models::{Assignment, ChildResult, WorkerSpec},
 };
 
+const AUTONOMOUS_COMPLETION: &str = "Finish this assignment completely in this turn. You hold full decision authority: never ask a question, request approval, offer Caleb options, or wait on his input, and never end the turn with in-scope work you identified left undone, deferred, or offered as optional. Resolve every ambiguity by choosing the strongest option and stating the choice you made. If an obstacle stops you, exhaust every alternative approach before accepting it, then report it as a finished investigation with exact evidence rather than as a question or a request for direction.";
+
 pub fn build(
     config: &ProjectConfig,
     worker: &WorkerSpec,
@@ -80,12 +82,14 @@ pub fn build(
             "Delegate only disjoint work by role with task_delegate and include the complete requirement and acceptance checks. Never call Task, read_agent, write_agent, or list_agents; Harness resumes you when children finish, so do not poll or duplicate their work. When doing work yourself, return the complete result once in your final assistant response."
         )
         .unwrap();
+        writeln!(prompt, "{AUTONOMOUS_COMPLETION}").unwrap();
     } else {
         writeln!(
             prompt,
             "Do this assignment yourself and return the complete result once in your final assistant response. Never call Task, read_agent, write_agent, or list_agents; do not delegate, poll, duplicate, relay, or leave a long-lived server running."
         )
         .unwrap();
+        writeln!(prompt, "{AUTONOMOUS_COMPLETION}").unwrap();
     }
     prompt
 }
@@ -157,6 +161,8 @@ mod tests {
         );
         assert!(prompt.contains("constrain each search to exact source or package directories"));
         assert!(prompt.contains("return the complete result once"));
+        assert!(prompt.contains("never ask a question, request approval"));
+        assert!(prompt.contains("left undone, deferred, or offered as optional"));
         assert!(!prompt.contains("task_complete"));
         assert!(!prompt.contains("Activity:"));
     }
@@ -294,8 +300,49 @@ mod tests {
 
         assert!(prompt.contains("Validate this build alert."));
         assert!(prompt.contains("Do this assignment yourself"));
+        assert!(prompt.contains("Finish this assignment completely in this turn"));
+        assert!(prompt.contains("never ask a question, request approval"));
         assert!(!prompt.contains("Direct conversation mode"));
         assert!(!prompt.contains("/work-items"));
+    }
+
+    #[test]
+    fn peer_notes_do_not_carry_the_autonomy_mandate() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        std::fs::create_dir(&root).unwrap();
+        let file = directory.path().join("project.json");
+        std::fs::write(
+            &file,
+            format!(
+                r#"{{"name":"Test","root":{},"leader":"lead","roles":[{{"name":"lead","description":"Lead","prompt":"Lead."}},{{"name":"reviewer","description":"Review","prompt":"Review."}}]}}"#,
+                serde_json::to_string(&root).unwrap()
+            ),
+        )
+        .unwrap();
+        let config = ProjectConfig::load(&file).unwrap();
+        let workers = config.workers();
+        let prompt = build(
+            &config,
+            &workers[1],
+            &Assignment {
+                id: "opaque:message".into(),
+                parent_id: None,
+                kind: "message".into(),
+                source: "agent".into(),
+                creator: "lead".into(),
+                assignee: "reviewer".into(),
+                topic: "status".into(),
+                body: "Draft complete.".into(),
+                attempts: 1,
+                claim_generation: 1,
+            },
+            &[],
+            "",
+        );
+
+        assert!(prompt.contains("Peer note"));
+        assert!(!prompt.contains("Finish this assignment completely in this turn"));
     }
 
     #[test]

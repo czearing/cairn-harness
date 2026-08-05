@@ -130,7 +130,7 @@ export const DirtyUnsaved: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByLabelText("Draft document"));
     await userEvent.type(canvas.getByLabelText("Draft document"), "A new draft");
-    await expect(canvas.getByText("Unsaved changes")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Start work" })).toBeEnabled();
   },
 };
 export const DirtySaved: Story = { args: { tabs: [draft("saved", "# Existing draft")] } };

@@ -65,4 +65,7 @@
   .button.button[data-button-variant="tab"],
   .button.button[data-button-variant="link"] { height: 44px; min-height: 44px; }
 }
+@media (forced-colors: active) {
+  .button.button:not([data-button-variant="inherit"]):focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+}
 @media (prefers-reduced-motion: reduce) { .button.button:not([data-button-variant="inherit"]) { transition: none; } .spinner { animation-duration: 1.4s; } }
