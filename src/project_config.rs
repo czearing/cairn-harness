@@ -97,22 +97,33 @@ impl ProjectConfig {
         "gpt-5.4-mini".into()
     }
 
+    /// Idea agents with their prompts resolved from the matching role, so an
+    /// agent's prompt has a single source of truth and a stale stored copy can
+    /// never be executed.
     pub fn idea_agents(&self) -> Vec<IdeaAgentConfig> {
-        if !self.idea_agents.is_empty() {
-            return self.idea_agents.clone();
+        let mut agents = if self.idea_agents.is_empty() {
+            self.producer
+                .as_ref()
+                .map(|agent| IdeaAgentConfig {
+                    agent: agent.clone(),
+                    task_limit: self.producer_limit.unwrap_or(1),
+                    prompt: self.producer_prompt.clone().unwrap_or_default(),
+                })
+                .into_iter()
+                .collect()
+        } else {
+            self.idea_agents.clone()
+        };
+
+        for idea in &mut agents {
+            if let Some(role) = self.roles.iter().find(|role| role.name == idea.agent) {
+                idea.prompt = role.prompt.clone();
+            }
+            if idea.prompt.trim().is_empty() {
+                idea.prompt = "Create a new task for this project.".into();
+            }
         }
-        self.producer
-            .as_ref()
-            .map(|agent| IdeaAgentConfig {
-                agent: agent.clone(),
-                task_limit: self.producer_limit.unwrap_or(1),
-                prompt: self
-                    .producer_prompt
-                    .clone()
-                    .unwrap_or_else(|| "Create a new task for this project.".into()),
-            })
-            .into_iter()
-            .collect()
+        agents
     }
 
     pub fn database_path(&self) -> PathBuf {
@@ -240,6 +251,46 @@ mod tests {
         assert_eq!(project.leader_task_limit, Some(2));
         assert_eq!(project.idea_agents().len(), 2);
         assert_eq!(project.workers()[0].idea_agents, vec!["one", "two"]);
+    }
+
+    #[test]
+    fn idea_agent_prompt_comes_from_the_role_not_a_stale_stored_copy() {
+        let directory = tempdir().unwrap();
+        let workspace = directory.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        let config = directory.path().join("project.json");
+        std::fs::write(
+            &config,
+            format!(
+                r#"{{"name":"Ideas","root":{},"leader":"lead","idea_agents":[{{"agent":"one","task_limit":1,"prompt":"STALE COPY."}}],"roles":[{{"name":"lead","description":"Lead","prompt":"Lead."}},{{"name":"one","description":"One","prompt":"CURRENT ROLE PROMPT."}}]}}"#,
+                serde_json::to_string(&workspace).unwrap()
+            ),
+        )
+        .unwrap();
+
+        let project = ProjectConfig::load(&config).unwrap();
+
+        assert_eq!(project.idea_agents()[0].prompt, "CURRENT ROLE PROMPT.");
+    }
+
+    #[test]
+    fn idea_agent_without_a_stored_prompt_still_resolves_from_its_role() {
+        let directory = tempdir().unwrap();
+        let workspace = directory.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        let config = directory.path().join("project.json");
+        std::fs::write(
+            &config,
+            format!(
+                r#"{{"name":"Ideas","root":{},"leader":"lead","idea_agents":[{{"agent":"one","task_limit":1}}],"roles":[{{"name":"lead","description":"Lead","prompt":"Lead."}},{{"name":"one","description":"One","prompt":"ROLE PROMPT."}}]}}"#,
+                serde_json::to_string(&workspace).unwrap()
+            ),
+        )
+        .unwrap();
+
+        let project = ProjectConfig::load(&config).unwrap();
+
+        assert_eq!(project.idea_agents()[0].prompt, "ROLE PROMPT.");
     }
 
     #[test]

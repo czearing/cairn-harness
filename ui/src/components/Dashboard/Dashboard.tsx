@@ -3,7 +3,7 @@ import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
-import type { HealthState, ModelSettings, Project } from "@/lib/types";
+import type { Agent, HealthState, ModelSettings, Project } from "@/lib/types";
 import { dashboardHref, parseDashboardPath, projectIdForRoute, type DashboardRoute } from "@/lib/dashboard-route";
 import { agentColor } from "@/lib/colors";
 import { agentAppearanceOverride, projectAgentColor, updateAgentAppearance } from "@/lib/agent-appearance";
@@ -202,6 +202,12 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
     agentMutationQueue.current = operation.catch(() => undefined);
     return operation;
   }
+  function writeCardAgent(agent: Agent, method: string, body?: object) {
+    if (!project) return Promise.reject(new Error("Project is no longer available."));
+    return write(`/api/projects/${project.id}/agents/${agent.id}`, method, body, {
+      expectedRevision: agent.configurationRevision,
+    });
+  }
   async function selectProject(id: string) {
     if (!await draftWorkspaces.saveAll()) return;
     if (
@@ -304,6 +310,12 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
           navigate(projectRoute(), true);
           await mutate();
         }}
+        onDeletionPreview={async () => {
+          const response = await fetch(`/api/projects/${project.id}/agents/${configurationAgent.id}`);
+          const body = await response.json().catch(() => undefined);
+          if (!response.ok) throw new Error(body?.error || "Could not check whether this agent can be deleted.");
+          return body;
+        }}
       /> : project ? <ProjectView
         project={project}
         colors={colors}
@@ -317,6 +329,24 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
           configurationReturnFocus.current = returnFocus;
         }}
         onPrefetch={(agent) => prefetchConversation(project.id, agent.id)}
+        onAgentPauseToggle={async (agent) => {
+          await writeCardAgent(agent, "PATCH", { action: agent.status === "paused" ? "resume" : "pause" });
+          await mutate();
+        }}
+        onAgentClearContext={async (agent) => {
+          await writeCardAgent(agent, "PATCH", { action: "clear-context" });
+          await mutate();
+        }}
+        onAgentDelete={async (agent) => {
+          await writeCardAgent(agent, "DELETE");
+          await mutate();
+        }}
+        onAgentDeletionPreview={async (agent) => {
+          const response = await fetch(`/api/projects/${project.id}/agents/${agent.id}`);
+          const body = await response.json().catch(() => undefined);
+          if (!response.ok) throw new Error(body?.error || "Could not check whether this agent can be deleted.");
+          return body;
+        }}
         onTask={(item) => {
           if (item.status === "draft") {
             draftWorkspaces.open(project.id, item);

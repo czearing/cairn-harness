@@ -6,17 +6,12 @@ import type { MouseEvent } from "react";
 import { Plus, Settings } from "lucide-react";
 import type { HealthState, Project } from "@/lib/types";
 import { agentColor } from "@/lib/colors";
+import { projectActivity } from "@/lib/project-activity";
 import { ProjectNavItem } from "../ProjectNavItem/ProjectNavItem";
 import { ProjectContextMenu } from "../ProjectContextMenu/ProjectContextMenu";
 import { StatusIndicator } from "../StatusIndicator/StatusIndicator";
 import { DashboardPane, DashboardPaneBody, DashboardPaneFooter, DashboardPaneHeader, DashboardPaneSectionLabel } from "../DashboardPane/DashboardPane";
 import styles from "./ProjectSidebar.module.css";
-
-const CLOSED_WORK_STATUSES = new Set(["done", "completed", "released", "cancelled"]);
-
-function activeWorkCount(project: Project): number {
-  return project.activeWorkCount ?? project.workItems.filter((item) => !CLOSED_WORK_STATUSES.has(item.status)).length;
-}
 
 interface Props {
   projects: Project[]; colors?: Record<string, string>; avatars?: Record<string, string>; selected?: string;
@@ -43,7 +38,7 @@ export function ProjectSidebar({ projects, colors = {}, avatars = {}, selected, 
   const visibleMenu = currentMenuProject ? menu : undefined;
   const rows = projects.map((project) => ({
     project,
-    count: activeWorkCount(project),
+    activity: projectActivity(project),
     color: agentColor(project.id, colors),
   }));
   function restoreOpener(opener?: HTMLButtonElement) {
@@ -110,15 +105,16 @@ export function ProjectSidebar({ projects, colors = {}, avatars = {}, selected, 
           action={<IconButton size="compact" ref={newProject} label="New project" onClick={onNew}><Plus size={14} /></IconButton>}
         />
         <nav ref={nav}>
-          {rows.map(({ project, count, color }) => <ProjectNavItem
+          {rows.map(({ project, activity, color }) => <ProjectNavItem
             key={project.id}
             projectId={project.id}
             name={project.name}
             avatar={avatars[project.id]}
-            count={count}
+            count={activity.activeCount}
             color={color}
             paused={project.paused}
-            inProgress={Boolean(project.activeWorkCount) && !project.paused}
+            status={activity.status}
+            statusLabel={activity.label}
             active={project.id === selected}
             menuOpen={visibleMenu?.source === "trigger" && visibleMenu.project.id === project.id}
             onClick={handleSelect}

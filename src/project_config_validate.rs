@@ -51,9 +51,6 @@ impl ProjectConfig {
             if idea.task_limit == 0 {
                 bail!("idea agent task limit must be greater than zero");
             }
-            if idea.prompt.trim().is_empty() {
-                bail!("idea agent prompt is required");
-            }
         }
         if let Some(producer) = &self.producer {
             self.roles

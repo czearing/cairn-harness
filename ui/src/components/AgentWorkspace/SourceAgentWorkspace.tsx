@@ -30,6 +30,7 @@ export const SourceAgentWorkspace = forwardRef<SourceAgentWorkspaceHandle, Omit<
     onPauseToggle,
     onReset,
     onDelete,
+    onDeletionPreview,
   }, ref) {
     const promptRegion = useRef<HTMLElement>(null);
     const workspaceContent = useRef<HTMLDivElement>(null);
@@ -148,7 +149,7 @@ export const SourceAgentWorkspace = forwardRef<SourceAgentWorkspaceHandle, Omit<
           <header className={styles.panelHeader}>
             <h2>Controls</h2>
           </header>
-          <AgentRuntimeActions agent={agent} onMakeLeader={onMakeLeader} onPauseToggle={onPauseToggle} onReset={onReset} onDelete={onDelete} />
+          <AgentRuntimeActions agent={agent} onMakeLeader={onMakeLeader} onPauseToggle={onPauseToggle} onReset={onReset} onDelete={onDelete} onDeletionPreview={onDeletionPreview} />
         </section>
       </div>
     </div>;

@@ -12,9 +12,9 @@ test("operator sees project, agents, queues, and activity", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "Lead", exact: true })).toBeVisible();
   await expect(page.getByText("Prepare and ship the launch.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /lead Delegated launch work/ })).toBeVisible();
-  const project = page.getByRole("button", { name: /Persona test.*tasks/ });
-  await expect(project.getByLabel(/\d+ tasks/)).toBeVisible();
-  expect(await project.evaluate((node) => getComputedStyle(node).animationName)).not.toBe("none");
+  const project = page.getByRole("button", { name: /Persona test.*active item/ });
+  await expect(project.getByLabel(/\d+ active items?/)).toBeVisible();
+  expect(await project.evaluate((node) => getComputedStyle(node, "::after").animationName)).not.toBe("none");
   const builder = page.getByRole("button", { name: "Open conversation with builder" }).locator("..");
   await expect(builder.getByText("Builder", { exact: true })).toHaveCount(1);
   await expect(builder.getByText("1 active assignment", { exact: true })).toHaveCount(0);
@@ -1484,7 +1484,7 @@ test("dashboard preserves its last good data when refresh fails", async ({ page 
   });
 
   await page.goto("/");
-  const initialProject = page.getByRole("button", { name: /Initial refresh project.*tasks/ });
+  const initialProject = page.getByRole("button", { name: /Initial refresh project.*active item/ });
   await expect(initialProject).toBeVisible();
   await initialProject.click();
   await expect(page.getByRole("heading", { name: "Initial refresh project" })).toBeVisible();
@@ -1503,7 +1503,7 @@ test("dashboard preserves its last good data when refresh fails", async ({ page 
   expect(pageErrors).toEqual([]);
   state = "recovered";
   await page.getByRole("button", { name: "Restart agents" }).click();
-  await expect(page.getByRole("button", { name: /Recovered refresh project.*tasks/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Recovered refresh project.*active item/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recovered refresh project" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Recovered health snapshot" })).toBeVisible();
   await expect(alert).toHaveCount(0);
@@ -3844,7 +3844,7 @@ test("agent appearance stays scoped when projects share an agent id", async ({ p
   expect(projectAIdentity.delegationColor).toBe(projectAColor);
   expect(projectAIdentity.chatColor).toBe(projectAColor);
 
-  await page.getByRole("button", { name: /Appearance project B.*tasks/ }).click();
+  await page.getByRole("button", { name: /Appearance project B.*active item/ }).click();
   await expect(page.getByRole("heading", { name: "Appearance project B" })).toBeVisible();
   const unchangedProjectBIdentity = await identity("b");
   expect(unchangedProjectBIdentity.cardColor).toBe(legacyColor);
@@ -3877,7 +3877,7 @@ test("agent appearance stays scoped when projects share an agent id", async ({ p
   await page.reload();
   await expect(page.getByRole("heading", { name: "Appearance project B" })).toBeVisible();
   expect(await identity("b")).toEqual(projectBIdentity);
-  await page.getByRole("button", { name: /Appearance project A.*tasks/ }).click();
+  await page.getByRole("button", { name: /Appearance project A.*active item/ }).click();
   await expect(page.getByRole("heading", { name: "Appearance project A" })).toBeVisible();
   expect(await identity("a")).toEqual(projectAIdentity);
 });
@@ -4472,9 +4472,9 @@ test("draft workbench stays separate and reachable across dashboard breakpoints"
 test("reduced motion disables active progress animations", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
-  const project = page.getByRole("button", { name: /Persona test.*tasks/ });
+  const project = page.getByRole("button", { name: /Persona test.*active item/ });
   const task = page.getByRole("button", { name: /Prepare and ship the launch.*Running/ });
-  expect(await project.evaluate((node) => getComputedStyle(node).animationName)).toBe("none");
+  expect(await project.evaluate((node) => getComputedStyle(node, "::after").animationName)).toBe("none");
   expect(await task.evaluate((node) => getComputedStyle(node).animationName)).toBe("none");
 });
 
@@ -4486,7 +4486,7 @@ test("settings owns project colors but not agent identity", async ({ page }) => 
   await color.fill("#ff5500");
   await page.getByRole("button", { name: "Close" }).click();
   await page.reload();
-  const project = page.getByRole("button", { name: /Persona test.*tasks/ });
+  const project = page.getByRole("button", { name: /Persona test.*active item/ });
   await expect.poll(() => project.evaluate((node) => getComputedStyle(node).getPropertyValue("--project-color"))).toBe("#ff5500");
 });
 
@@ -4529,7 +4529,7 @@ test("project actions are available without right click", async ({ page }) => {
     const trigger = page.getByRole("button", { name: `More options for ${projectName}` });
     const project = page.locator(`[data-project-selection="${projectId}"]`);
     await expect(trigger).toBeVisible();
-    await expect(project.getByLabel("123 tasks")).toHaveText("123");
+    await expect(project.getByLabel("123 active items")).toHaveText("123");
     await expect(trigger).toHaveAttribute("aria-haspopup", "menu");
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
@@ -4808,24 +4808,24 @@ test("project action overlays close when a live refresh removes their project", 
 
 test("paused projects keep their queued task count", async ({ page }) => {
   await page.goto("/");
-  const project = page.getByRole("button", { name: /Persona test.*tasks/ });
-  const taskCount = project.getByLabel("1 tasks");
+  const project = page.getByRole("button", { name: /Persona test.*active item/ });
+  const taskCount = project.getByLabel("1 active item");
 
   try {
     await expect(taskCount).toHaveText("1");
-    expect(await project.evaluate((node) => getComputedStyle(node).animationName)).not.toBe("none");
+    expect(await project.evaluate((node) => getComputedStyle(node, "::after").animationName)).not.toBe("none");
 
     await project.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Pause agents" }).click();
     await expect(project.getByLabel("Project paused")).toBeVisible();
     await expect(taskCount).toHaveText("1");
-    expect(await project.evaluate((node) => getComputedStyle(node).animationName)).toBe("none");
+    expect(await project.evaluate((node) => getComputedStyle(node, "::after").animationName)).toBe("none");
 
     await project.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Resume agents" }).click();
     await expect(project.getByLabel("Project paused")).toHaveCount(0);
     await expect(taskCount).toHaveText("1");
-    expect(await project.evaluate((node) => getComputedStyle(node).animationName)).not.toBe("none");
+    expect(await project.evaluate((node) => getComputedStyle(node, "::after").animationName)).not.toBe("none");
   } finally {
     await page.request.patch("/api/projects/.e2e", { data: { paused: false } });
   }
@@ -4837,7 +4837,7 @@ test("project settings pause, resume, and safely confirm removal", async ({ page
   const worker = path.join(process.cwd(), fixture, "workspace", ".cairn-harness", "ui-worker.json");
   const paused = path.join(process.cwd(), fixture, ".cairn-paused");
   await page.goto("/");
-  const currentProject = page.getByRole("button", { name: /Persona test.*tasks/ });
+  const currentProject = page.getByRole("button", { name: /Persona test.*active item/ });
   await currentProject.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Pause agents" }).click();
   await expect.poll(() => fs.existsSync(paused)).toBe(true);
@@ -4858,7 +4858,7 @@ test("project settings pause, resume, and safely confirm removal", async ({ page
   const created = await page.request.post("/api/projects", { data: { name: "Disposable project", workspace: disposableWorkspace } });
   expect(created.ok()).toBe(true);
   await page.reload();
-  const project = page.getByRole("button", { name: /Disposable project.*tasks/ });
+  const project = page.getByRole("button", { name: /Disposable project.*active item/ });
   await project.click();
   await expect(page.getByRole("heading", { name: "Disposable project" })).toBeVisible();
   await project.click({ button: "right" });
@@ -4961,7 +4961,7 @@ test("failed project controls remain visible and retryable", async ({ page }) =>
   });
 
   await page.goto("/");
-  const project = page.getByRole("button", { name: /Persona test.*tasks/ });
+  const project = page.getByRole("button", { name: /Persona test.*active item/ });
   await project.click({ button: "right" });
   let menu = page.getByRole("menu", { name: "Persona test project actions" });
   const appearance = menu.getByRole("menuitem", { name: "Appearance" });
@@ -5092,7 +5092,7 @@ test("deleted agent activity remains visible without a dead action", async ({ pa
 
   try {
     await page.goto("/");
-    const project = page.getByRole("button", { name: /Deleted agent activity.*tasks/ });
+    const project = page.getByRole("button", { name: /Deleted agent activity.*active item/ });
     await project.click();
     const rail = page.getByRole("complementary", { name: "Recent activity" });
     const historical = rail.getByRole("button", { name: /Failed: Historical builder activity.*builder/i });
@@ -5100,7 +5100,7 @@ test("deleted agent activity remains visible without a dead action", async ({ pa
 
     agentRemoved = true;
     await page.reload();
-    await page.getByRole("button", { name: /Deleted agent activity.*tasks/ }).click();
+    await page.getByRole("button", { name: /Deleted agent activity.*active item/ }).click();
 
     const summary = rail.getByText("Failed: Historical builder activity", { exact: true });
     const removedRow = summary.locator("..").locator("..").locator("..");

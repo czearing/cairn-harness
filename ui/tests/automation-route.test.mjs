@@ -67,7 +67,7 @@ test("automation restart failures reach the response after persisting desired co
   const persisted = JSON.parse(readFileSync(configPath, "utf8"));
   assert.equal("leader_task_limit" in persisted, false);
   assert.equal(persisted.max_active_tasks, 2);
-  assert.deepEqual(persisted.idea_agents, [{ agent: "ideas", task_limit: 3, prompt: "Create useful work." }]);
+  assert.deepEqual(persisted.idea_agents, [{ agent: "ideas", task_limit: 3 }]);
 });
 
 test("automation persistence failures remain ordinary request failures", async () => {

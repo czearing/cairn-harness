@@ -4,6 +4,7 @@ import { IdentityMark } from "@/components/IdentityMark/IdentityMark";
 import { MoreHorizontal } from "lucide-react";
 import type { CSSProperties, MouseEvent } from "react";
 import { StatusIndicator } from "../StatusIndicator/StatusIndicator";
+import type { ProjectActivity } from "@/lib/project-activity";
 import styles from "./ProjectNavItem.module.css";
 
 interface Props {
@@ -14,15 +15,19 @@ interface Props {
   color?: string;
   active?: boolean;
   paused?: boolean;
-  inProgress?: boolean;
+  status: ProjectActivity["status"];
+  statusLabel: string;
   menuOpen: boolean;
   onClick: (projectId: string) => void;
   onMenu: (projectId: string, event: MouseEvent<HTMLButtonElement>) => void;
   onContextMenu: (projectId: string, event: MouseEvent<HTMLButtonElement>) => void;
 }
 
-export function ProjectNavItem({ projectId, name, avatar, count, color, active, paused, inProgress, menuOpen, onClick, onMenu, onContextMenu }: Props) {
+export function ProjectNavItem({ projectId, name, avatar, count, color, active, paused, status, statusLabel, menuOpen, onClick, onMenu, onContextMenu }: Props) {
   const identity = { "--project-color": color } as CSSProperties;
+  // The row shimmer means the project has work in flight at all; the dot carries the precise state.
+  // Keying the shimmer to "working" alone would stop a queued project from reading as live.
+  const live = status === "working" || status === "queued";
   const select = () => onClick(projectId);
   const openMenu = (event: MouseEvent<HTMLButtonElement>) => onMenu(projectId, event);
   const openContextMenu = (event: MouseEvent<HTMLButtonElement>) => onContextMenu(projectId, event);
@@ -33,14 +38,14 @@ export function ProjectNavItem({ projectId, name, avatar, count, color, active, 
         type="button"
         data-project-selection={projectId}
         aria-current={active ? "page" : undefined}
-        className={`${styles.item} ${active ? styles.active : ""} ${paused ? styles.paused : ""} ${inProgress ? styles.progress : ""}`}
+        className={`${styles.item} ${active ? styles.active : ""} ${paused ? styles.paused : ""} ${live ? styles.progress : ""}`}
         onClick={select}
         onContextMenu={openContextMenu}
       >
         <IdentityMark name={name} avatarUrl={avatar} color={color} size="sm" className={styles.mark} />
         <span className={styles.name}>{name}</span>
-        <span className={styles.count} aria-label={`${count} tasks`}>{count}</span>
-        <StatusIndicator status={paused ? "paused" : inProgress ? "working" : "healthy"} label={paused ? "Project paused" : inProgress ? "Project working" : "Project ready"} display="dot" />
+        <span className={styles.count} aria-label={`${count} active ${count === 1 ? "item" : "items"}`}>{count}</span>
+        <StatusIndicator status={status} label={statusLabel} display="dot" />
       </Button>
       <IconButton
         size="compact"

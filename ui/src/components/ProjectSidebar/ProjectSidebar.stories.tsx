@@ -1,23 +1,44 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, screen, userEvent, within } from "storybook/test";
+import type { AgentStatus } from "@/lib/types";
 import { ProjectSidebar } from "./ProjectSidebar";
 
-const project = (id: string, name: string, activeWorkCount = 0, paused = false) => ({
+const workItem = (index: number, status: string) => ({
+  id: `task-${index}`,
+  title: `Work item ${index}`,
+  meta: `task-${index}`,
+  status,
+});
+const agent = (status: AgentStatus, topic?: string) => ({
+  id: "operator",
+  title: "Operator",
+  role: "Operator",
+  status,
+  topic,
+  updatedAt: "2026-08-06T00:00:00.000Z",
+});
+const project = (
+  id: string,
+  name: string,
+  activeWork = 0,
+  paused = false,
+  agents: ReturnType<typeof agent>[] = [],
+) => ({
   id,
   name,
   root: "",
-  agents: [],
-  workItems: [],
+  agents,
+  workItems: Array.from({ length: activeWork }, (_, index) => workItem(index, "pending"))
+    .concat([workItem(99, "completed")]),
   delegatedActions: [],
   activity: [],
   conversations: {},
   releases: 0,
-  activeWorkCount,
   paused,
 });
 const projects = [
-  project("cairn", "Cairn Harness", 4),
+  project("cairn", "Cairn Harness", 4, false, [agent("working", "Reviewing PR 5549904")]),
   project("launch", "Launch operations", 2),
   project("research", "Product research"),
   project("archive", "Archived experiments", 0, true),
@@ -88,6 +109,27 @@ export const DegradedHealth: Story = {
 export const EmptyState: Story = {
   args: { projects: [], selected: undefined },
   render: (args) => <div style={{ width: 248, minHeight: "100vh" }}><ProjectSidebar {...args} /></div>,
+};
+export const ActivityStates: Story = {
+  args: {
+    selected: "working",
+    projects: [
+      project("working", "Agent running now", 3, false, [agent("working", "Reviewing PR 5549904")]),
+      project("queued", "Work admitted, nothing started", 2),
+      project("attention", "Agent needs a human", 1, false, [agent("failed")]),
+      project("stopped", "Project paused", 2, true),
+      project("quiet", "Nothing happening", 0),
+    ],
+  },
+  render: (args) => <div style={{ width: 248, minHeight: "100vh" }}><ProjectSidebar {...args} /></div>,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByLabelText("Operator: Reviewing PR 5549904")).toBeVisible();
+    await expect(canvas.getByLabelText("2 items queued")).toBeVisible();
+    await expect(canvas.getByLabelText("1 agent needs attention")).toBeVisible();
+    await expect(canvas.getByLabelText("Project paused")).toBeVisible();
+    await expect(canvas.getByLabelText("No active work")).toBeVisible();
+  },
 };
 export const ContextMenuOpen: Story = {
   render: () => <SidebarHarness />,

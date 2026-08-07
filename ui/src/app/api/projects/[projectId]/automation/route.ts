@@ -15,7 +15,7 @@ export async function handleAutomationPut(
   try {
     const data = await request.json() as {
       maxActiveTasks?: number;
-      ideaAgents: { agentId: string; taskLimit: number; prompt: string }[];
+      ideaAgents: { agentId: string; taskLimit: number }[];
     };
     const result = await update(projectId, data);
     if (result.restartError) {

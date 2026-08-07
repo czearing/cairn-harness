@@ -51,6 +51,11 @@
 .warning strong { font-size: var(--type-body-sm); }
 .actionRow { display: flex; flex-wrap: wrap; gap: 8px; }
 .actionRow .dangerButton { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
+.deletePanel { display: grid; gap: 10px; padding: 16px; border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--danger) 5%, var(--surface-1)); }
+.deleteTitle { margin: 0; font-size: var(--type-body); font-weight: var(--weight-label); color: var(--text); }
+.deleteDetail { margin: 0; font-size: var(--type-body-sm); color: var(--text-muted); }
+.blockerList { display: grid; gap: 8px; margin: 0; padding-left: 18px; font-size: var(--type-body-sm); color: var(--text-muted); }
+.blockerList strong { color: var(--text); }
 .error { color: var(--danger) !important; }
 .back:focus-visible, .conversation:focus-visible, .settingsTabs button:focus-visible, .readOnly button:focus-visible, .actionRow button:focus-visible { outline: 2px solid #78a9e6; outline-offset: 2px; }
 @media (max-width: 1050px) { .workspace { height: auto; overflow: visible; } }

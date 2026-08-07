@@ -2,7 +2,7 @@ interface AutomationConfig {
   leader?: string;
   leader_task_limit?: number;
   max_active_tasks?: number;
-  idea_agents?: { agent: string; task_limit: number; prompt: string }[];
+  idea_agents?: { agent: string; task_limit: number }[];
   producer?: string;
   producer_limit?: number;
   producer_prompt?: string;
@@ -11,7 +11,7 @@ interface AutomationConfig {
 
 export interface AutomationSettings {
   maxActiveTasks?: number;
-  ideaAgents: { agentId: string; taskLimit: number; prompt: string }[];
+  ideaAgents: { agentId: string; taskLimit: number }[];
 }
 
 export function applyAutomationConfig(config: AutomationConfig, settings: AutomationSettings) {
@@ -26,7 +26,6 @@ export function applyAutomationConfig(config: AutomationConfig, settings: Automa
     if (seen.has(idea.agentId)) throw new Error("Idea agents must be unique");
     if (idea.agentId === config.leader) throw new Error("Project leader cannot also be an idea agent");
     if (!Number.isInteger(idea.taskLimit) || idea.taskLimit < 1) throw new Error("Idea agent task limit must be at least one");
-    if (!idea.prompt.trim()) throw new Error("Idea agent prompt is required");
     seen.add(idea.agentId);
   }
   delete config.leader_task_limit;
@@ -35,7 +34,6 @@ export function applyAutomationConfig(config: AutomationConfig, settings: Automa
   config.idea_agents = settings.ideaAgents.map((idea) => ({
     agent: idea.agentId,
     task_limit: idea.taskLimit,
-    prompt: idea.prompt.trim(),
   }));
   delete config.producer;
   delete config.producer_limit;

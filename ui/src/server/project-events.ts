@@ -4,6 +4,7 @@ import { conversationVersions } from "./project-conversation-versions";
 import { isDatabase, isRelevantProjectEvent, projectEventAgent } from "./project-event-path";
 
 export interface ProjectEvent { projectId: string; conversations: string[]; }
+export const PROJECT_EVENT_COALESCE_MS = 150;
 type Listener = (event: ProjectEvent) => void;
 type DegradedListener = () => void;
 const state = globalThis as typeof globalThis & { harnessEvents?: EventState };
@@ -18,6 +19,7 @@ interface EventState {
 interface EventDependencies {
   watchProject: (root: string, listener: (event: string, file: string | Buffer | null) => void) => FSWatcher;
   conversationVersions: (project: Project) => Map<string, string>;
+  schedule?: (callback: () => void) => void;
 }
 
 function eventState() {
@@ -45,6 +47,9 @@ export function createProjectEventSubscriber(dependencies: EventDependencies) {
 const defaultDependencies: EventDependencies = {
   watchProject: (root, listener) => watch(root, { recursive: true }, listener),
   conversationVersions,
+  // A single SQLite commit emits a burst of WAL events. Without a real-time window each burst
+  // becomes another client refetch, and every refetch re-reads the project synchronously.
+  schedule: (callback) => setTimeout(callback, PROJECT_EVENT_COALESCE_MS).unref?.(),
 };
 
 function createEventState(): EventState {
@@ -80,7 +85,7 @@ function subscribe(
         const latest = current.projects.get(root);
         if (!latest) return;
         const changed = String(file || "");
-        if (isRelevantProjectEvent(changed, latest.workDir)) emit(current, latest, changed, dependencies.conversationVersions);
+        if (isRelevantProjectEvent(changed, latest.workDir)) emit(current, latest, changed, dependencies);
       });
       current.watchers.set(root, watcher);
       watcher.on?.("error", () => watcherFailed(current, root, watcher));
@@ -159,8 +164,10 @@ function emit(
   current: EventState,
   project: Project,
   file: string,
-  readVersions: EventDependencies["conversationVersions"],
+  dependencies: EventDependencies,
 ) {
+  const readVersions = dependencies.conversationVersions;
+  const schedule = dependencies.schedule || queueMicrotask;
   const normalized = file.replaceAll("\\", "/");
   const database = isDatabase(normalized);
   const eventAgent = projectEventAgent(normalized, project);
@@ -180,7 +187,7 @@ function emit(
   }
   const event = { projectId: project.id, conversations };
   current.queued.set(project.root, event);
-  queueMicrotask(() => {
+  schedule(() => {
     if (current.queued.get(project.root) !== event) return;
     current.queued.delete(project.root);
     for (const listener of current.subscriptions.keys()) listener(event);

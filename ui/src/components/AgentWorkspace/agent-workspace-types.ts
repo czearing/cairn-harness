@@ -1,5 +1,14 @@
 import type { Agent, ModelSettings } from "@/lib/types";
 
+export interface AgentDeletionPreview {
+  revision: number;
+  targetId: string;
+  targetKind: "source" | "local";
+  affected: Array<{ id: string; kind: "source" | "local"; status: string; currentClaim?: string }>;
+  blockers: Array<{ code: "leader" | "active_work"; agentId: string; status?: string; claimId?: string }>;
+  canDelete: boolean;
+}
+
 export interface AgentWorkspaceProps {
   agent: Agent;
   settings?: ModelSettings;
@@ -18,6 +27,7 @@ export interface AgentWorkspaceProps {
   onPauseToggle: () => Promise<void>;
   onReset: () => Promise<void>;
   onDelete: () => Promise<void>;
+  onDeletionPreview: () => Promise<AgentDeletionPreview>;
 }
 
 export interface AgentWorkspaceHandle {

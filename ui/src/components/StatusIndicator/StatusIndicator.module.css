@@ -28,6 +28,14 @@
 .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .status[data-tone="positive"] { --status-signal: var(--accent); }
 .status[data-tone="active"] { --status-signal: var(--accent); --status-label: var(--text); }
+/* Live work shares the accent with settled success, so it carries a static halo as well as the pulse.
+   Motion alone cannot distinguish them: prefers-reduced-motion removes the animation below, which would
+   leave the two states pixel-identical for the users who asked for less motion. */
+.status[data-tone="active"] .signal {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--status-signal) 34%, transparent),
+    0 0 0 3.5px color-mix(in srgb, var(--status-signal) 16%, transparent);
+}
 .status[data-tone="info"] { --status-signal: var(--info); }
 .status[data-tone="warning"] { --status-signal: var(--warning); --status-label: color-mix(in srgb, var(--warning) 82%, var(--text)); }
 .status[data-tone="danger"] { --status-signal: var(--danger); --status-label: color-mix(in srgb, var(--danger) 86%, var(--text)); }

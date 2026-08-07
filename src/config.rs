@@ -36,6 +36,9 @@ pub struct ProjectConfig {
 pub struct IdeaAgentConfig {
     pub agent: String,
     pub task_limit: u64,
+    /// Fallback only. When a role of the same name exists, its prompt wins, so
+    /// an agent has exactly one prompt regardless of what is stored here.
+    #[serde(default)]
     pub prompt: String,
 }
 

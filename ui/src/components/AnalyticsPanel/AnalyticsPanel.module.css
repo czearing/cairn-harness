@@ -1,0 +1,6 @@
+.panel { margin-top: 22px; }
+.head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.head h2 { margin: 0; font-size: var(--type-body-lg); font-weight: var(--weight-heading); }
+.loading,
+.error { margin: 0; padding: 18px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-1); color: var(--text-muted); font-size: var(--type-body-sm); }
+.error { border-style: solid; border-color: var(--danger); color: var(--danger); }

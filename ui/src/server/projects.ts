@@ -13,6 +13,7 @@ import { writeProjectConfig } from "./project-config-write";
 import { parseTurnOutput } from "./turn-output";
 import { migrateAgentRelationships, migrateLegacyProjectModel, type ModelProjectConfig } from "./model-config";
 import { projectAgentStatus, readRecoverableRootWork, recoverableRootWorkFor, type RecoverableRootWork } from "./agent-status-projection";
+import { cachedProject, forgetProjects, projectInputFingerprint, storeProject } from "./projects-snapshot";
 
 export { getProjectConfigPath } from "./project-registry";
 
@@ -35,7 +36,17 @@ export function getProjects(openDatabase: ProjectDatabaseFactory = openProjectDa
 export function getProjectListing(openDatabase: ProjectDatabaseFactory = openProjectDatabase) {
   const projects: Project[] = [];
   const diagnostics = new Map<string, ProjectReadDiagnostic>();
-  for (const configPath of getProjectConfigPaths()) {
+  const cacheable = openDatabase === openProjectDatabase;
+  const configPaths = getProjectConfigPaths();
+  if (cacheable) forgetProjects(configPaths);
+  for (const configPath of configPaths) {
+    if (cacheable) {
+      const reusable = cachedProject(configPath);
+      if (reusable) {
+        projects.push(reusable);
+        continue;
+      }
+    }
     let registration: ProjectRegistration;
     try {
       registration = readProjectRegistration(configPath);
@@ -48,7 +59,11 @@ export function getProjectListing(openDatabase: ProjectDatabaseFactory = openPro
       }
       continue;
     }
-    projects.push(readProject(registration, openDatabase));
+    // Sample inputs before reading so a write that lands mid-read is never cached as fresh.
+    const fingerprint = cacheable ? projectInputFingerprint(configPath, registration.root) : "";
+    const project = readProject(registration, openDatabase);
+    if (cacheable) storeProject(configPath, registration.root, fingerprint, project);
+    projects.push(project);
   }
   return { projects, diagnostics: [...diagnostics.values()] };
 }
@@ -67,7 +82,11 @@ export function getProjectRuntime(id: string) {
     id,
     root: canonicalWorkspaceRoot(path.resolve(path.dirname(configPath), config.root)),
     paused: existsSync(path.join(path.dirname(configPath), ".cairn-paused")),
-    agents: config.roles.map((role) => ({ id: role.name, isLeader: role.name === leader })),
+    agents: config.roles.map((role) => ({
+      id: role.name,
+      title: role.title || displayName(role.name),
+      isLeader: role.name === leader,
+    })),
   };
 }
 
@@ -248,17 +267,18 @@ function roleAgent(role: Config["roles"][number], leader: string | undefined, id
   return { id: role.name, kind: role.agent_kind || "source", sourceAgentId: role.source_agent || role.name, instanceOrdinal: role.instance_ordinal || 0, configurationRevision, title: role.title || displayName(role.name), role: role.description, prompt: role.prompt, model: role.model, isLeader: role.name === leader, isIdeaAgent: ideaAgents.has(role.name), status: "idle", updatedAt: "" };
 }
 function ideaAgentConfig(config: Config): IdeaAgent[] {
+  const rolePrompt = (agentId: string) => config.roles?.find((role) => role.name === agentId)?.prompt;
   const configured = config.idea_agents?.map((idea) => ({
     agentId: idea.agent,
     taskLimit: idea.task_limit,
-    prompt: idea.prompt,
+    prompt: rolePrompt(idea.agent) ?? idea.prompt,
     activeTaskCount: 0,
   }));
   if (configured?.length) return configured;
   return config.producer ? [{
     agentId: config.producer,
     taskLimit: config.producer_limit || 1,
-    prompt: config.producer_prompt || "Create a new task for this project.",
+    prompt: rolePrompt(config.producer) ?? config.producer_prompt ?? "Create a new task for this project.",
     activeTaskCount: 0,
   }] : [];
 }

@@ -75,11 +75,20 @@ test("sidebar rows receive identity-addressed callbacks instead of per-row closu
   assert.match(navItem, /onMenu: \(projectId: string, event: MouseEvent<HTMLButtonElement>\) => void/);
   assert.doesNotMatch(sidebar, /onClick=\{\(\) =>/);
   assert.doesNotMatch(sidebar, /onMenu=\{\(event\) =>/);
-  assert.match(sidebar, /function activeWorkCount\(project: Project\): number/);
+  assert.match(sidebar, /import \{ projectActivity \} from "@\/lib\/project-activity"/);
   assert.doesNotMatch(sidebar, /\.map\(\(project\) => <ProjectNavItem/);
   for (const source of [sidebar, navItem]) {
     assert.doesNotMatch(source, /\buseMemo\b|\buseCallback\b|\bmemo\(/);
   }
+});
+
+test("the row status is derived once in a tested module, never hand-rolled in the view", () => {
+  // The always-green defect came from the view inventing its own status expression from a counter that
+  // could not represent the activity it claimed to summarise.
+  assert.doesNotMatch(navItem, /inProgress/);
+  assert.doesNotMatch(navItem, /status=\{[^}]*\?/);
+  assert.doesNotMatch(sidebar, /activeWorkCount/);
+  assert.match(navItem, /status: ProjectActivity\["status"\]/);
 });
 
 test("in-progress rows animate on the compositor", () => {

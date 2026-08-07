@@ -14,8 +14,16 @@ test("workflow automation persists root capacity with existing limits", () => {
   assert.deepEqual(config.idea_agents, [{
     agent: "ideas",
     task_limit: 4,
-    prompt: "Create useful work.",
   }]);
+});
+
+test("an idea agent prompt is never persisted, so it cannot drift from the role", () => {
+  const config = { roles: [{ name: "ideas" }] };
+  applyAutomationConfig(config, {
+    ideaAgents: [{ agentId: "ideas", taskLimit: 1, prompt: "Stale copy." }],
+  });
+
+  assert.equal("prompt" in config.idea_agents[0], false);
 });
 
 test("blank root capacity preserves the existing unlimited default", () => {

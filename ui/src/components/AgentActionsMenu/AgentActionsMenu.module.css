@@ -1,0 +1,21 @@
+.trigger { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 5px; background: transparent; color: var(--text-subtle); cursor: pointer; }
+.trigger:hover { background: var(--surface-hover); color: var(--text); }
+.menu { position: fixed; width: 248px; display: grid; gap: 3px; padding: 5px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-2); box-shadow: var(--shadow-panel); }
+.menu button { min-height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--text-muted); font-size: var(--type-body-sm); text-align: left; cursor: pointer; }
+.menu button:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.menu button:disabled { cursor: default; opacity: 0.55; }
+.menu a { min-height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 5px; color: var(--text-muted); font-size: var(--type-body-sm); text-decoration: none; }
+.menu a:hover { background: var(--surface-hover); color: var(--text); }
+.danger { color: #ff8f88; }
+.menu .danger:hover:not(:disabled) { background: rgb(190 56 48 / 14%); color: #ff8f88; }
+.separator { height: 1px; margin: 3px 6px; background: var(--border); }
+.panel { display: grid; gap: 6px; padding: 6px; }
+.panelTitle { margin: 0; color: var(--text); font-size: var(--type-body-sm); font-weight: 600; }
+.panelDetail { margin: 0; color: var(--text-muted); font-size: var(--type-body-sm); line-height: 1.4; }
+.blockerList { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.blockerList strong { display: block; color: var(--text); font-size: var(--type-body-sm); }
+.blockerList span { color: var(--text-muted); font-size: var(--type-body-sm); line-height: 1.4; }
+.panelActions { display: flex; gap: 6px; }
+.panelActions button { justify-content: center; flex: 1; border: 1px solid var(--border-strong); }
+.error { margin: 3px 5px; color: #ff8f88; font-size: var(--type-body-sm); line-height: 1.35; }
+.loading { margin: 6px; color: var(--text-muted); font-size: var(--type-body-sm); }

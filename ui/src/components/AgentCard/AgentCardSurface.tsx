@@ -26,6 +26,7 @@ export interface AgentCardSurfaceProps {
   onPrimary?: (returnFocus: HTMLElement) => void;
   primaryHref?: string;
   primaryLabel: string;
+  renderActions?: (triggerClassName: string) => ReactNode;
   settingsHref?: string;
   settingsLabel?: string;
   status: AgentStatus;
@@ -47,6 +48,7 @@ export function AgentCardSurface({
   onPrimary,
   primaryHref,
   primaryLabel,
+  renderActions,
   settingsHref,
   settingsLabel = "Settings",
   status,
@@ -96,7 +98,9 @@ export function AgentCardSurface({
           <h3>{title}</h3>
           <StatusIndicator status={status} size="compact" />
         </div>
-        {onConfigure && (settingsHref
+        {renderActions
+          ? renderActions(styles.configure)
+          : onConfigure && (settingsHref
           ? <Link
               className={styles.configure}
               href={settingsHref}
