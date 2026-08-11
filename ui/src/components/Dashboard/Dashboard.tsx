@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import useSWR from "swr";
 import type { Agent, HealthState, ModelSettings, Project } from "@/lib/types";
 import { dashboardHref, parseDashboardPath, projectIdForRoute, type DashboardRoute } from "@/lib/dashboard-route";
@@ -43,7 +43,15 @@ const routeFocusKey = "harness-route-focus";
 export function Dashboard({ initialProjects, initialSelectedProject, initialDashboardLayout, initialDraftHeight, initialPathname, workspaceRoot }: { initialProjects: Project[]; initialSelectedProject?: string; initialDashboardLayout?: string; initialDraftHeight?: number; initialPathname: string; workspaceRoot: string }) {
   const pathname = usePathname() || initialPathname;
   const router = useRouter();
-  const route = parseDashboardPath(pathname) || { kind: "root" };
+  const [, startRouteTransition] = useTransition();
+  // Overlay routes render entirely from client state, but every dashboard page is
+  // force-dynamic, so Next cannot prefetch them and each click would otherwise wait for a
+  // server roundtrip. Painting the requested route immediately keeps interaction latency
+  // independent of server load; the URL catches up in the background. The request is tied
+  // to the pathname it was made from, so it stops applying once the router lands.
+  const [requestedRoute, setRequestedRoute] = useState<{ href: string; from: string }>();
+  const activePathname = requestedRoute?.from === pathname ? requestedRoute.href : pathname;
+  const route = parseDashboardPath(activePathname) || { kind: "root" };
   const routeProjectId = projectIdForRoute(route);
   const { data = initialProjects, error: projectError, mutate } = useSWR<Project[]>(
     "/api/projects",
@@ -113,7 +121,7 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
       pendingConfigurationFocus.current = undefined;
     });
     return () => cancelAnimationFrame(frame);
-  }, [configurationAgent, pathname]);
+  }, [configurationAgent, activePathname]);
   useEffect(() => {
     if (route.kind !== "project") return;
     const target = sessionStorage.getItem(routeFocusKey);
@@ -130,7 +138,7 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
       document.querySelector<HTMLElement>(selector)?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [route.kind, pathname]);
+  }, [route.kind, activePathname]);
   const appearanceProject = data.find((item) => item.id === projectAppearanceId);
   const agentProject = data.find((item) => item.id === agentProjectId);
   const automationProject = data.find((item) => item.id === automationProjectId);
@@ -161,8 +169,13 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
   const refreshProjects = () => { void mutate().catch(() => undefined); }; const refreshHealth = () => { void mutateHealth().catch(() => undefined); };
   function navigate(next: Exclude<DashboardRoute, { kind: "root" }>, replace = false) {
     const href = dashboardHref(next);
-    if (replace) router.replace(href);
-    else router.push(href);
+    // Always replace the pending request: navigating back to the URL the router is already
+    // on must clear a still-pending request rather than let it keep overriding the route.
+    setRequestedRoute(href === pathname ? undefined : { href, from: pathname });
+    startRouteTransition(() => {
+      if (replace) router.replace(href);
+      else router.push(href);
+    });
   }
   function projectRoute(projectId = project?.id) {
     return projectId ? { kind: "project", projectId, view: "overview" } as const : { kind: "new-project" } as const;
@@ -236,7 +249,7 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
       data-app-shell
       data-agent-workspace={configurationAgent ? "true" : undefined}
       data-route-kind={route.kind}
-      data-route-pathname={pathname}
+      data-route-pathname={activePathname}
       data-route-agent={chat?.agentId}
       data-chat-agent={chatAgent?.id}
     >

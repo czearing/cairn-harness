@@ -7,12 +7,25 @@ import { projectAgentStatus, readRecoverableRootWork, recoverableRootWorkFor } f
 import { readTextTail } from "./file-tail";
 import { readRecentTaskFailures } from "./health-diagnostics";
 import { getProjectConfigPath, getProjectListing, type ProjectReadDiagnostic } from "./projects";
+import { cachedHealth, healthInputSignature, storeHealth } from "./health-snapshot";
 import { createCachedWorkerProcessResolver } from "./worker-process-identity";
 
 const resolveWorkerProcess = createCachedWorkerProcessResolver();
 
 export function getHealth(): HealthState {
   const { projects, diagnostics } = getProjectListing();
+  const signature = healthInputSignature(projects.map(({ id, root }) => ({ id, root })));
+  const reusable = cachedHealth(signature);
+  if (reusable) return reusable;
+  const state = readHealth(projects, diagnostics);
+  storeHealth(signature, state);
+  return state;
+}
+
+function readHealth(
+  projects: ReturnType<typeof getProjectListing>["projects"],
+  diagnostics: ProjectReadDiagnostic[],
+): HealthState {
   const issues = [...diagnostics.map(projectRegistrationIssue), ...projects.flatMap(projectIssues)];
   const active = projects.filter((project) => !project.paused);
   if (issues.length) return { status: "attention", label: `${issues.length} issue${issues.length === 1 ? "" : "s"}`, issues };

@@ -1,4 +1,5 @@
 import { getHealth } from "@/server/health";
+import { invalidateHealthSnapshot } from "@/server/health-snapshot";
 import { restartProject } from "@/server/supervisor";
 
 export const runtime = "nodejs";
@@ -13,6 +14,7 @@ export async function POST(request: Request) {
   if (!data.projectId) return Response.json({ error: "Project is required" }, { status: 400 });
   try {
     restartProject(data.projectId);
+    invalidateHealthSnapshot();
     return Response.json({ ok: true });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Restart failed" }, { status: 400 });

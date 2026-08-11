@@ -52,6 +52,28 @@ test("drafts and settings expose canonical URLs", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "Global settings" })).toBeVisible();
 });
 
+test("overlay routes open without waiting for the server", async ({ page }) => {
+  const projects = await page.request.get("/api/projects").then((response) => response.json());
+  const project = projects[0] as { id: string };
+  await page.goto(`/projects/${encodeURIComponent(project.id)}`);
+  await expect(page.getByRole("button", { name: "Global settings" })).toBeVisible();
+
+  // Dashboard pages are force-dynamic, so Next cannot prefetch them and a slow or busy
+  // server would otherwise stall every overlay behind a render it does not need.
+  await page.route(
+    (url) => url.pathname === "/settings",
+    async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+      await route.continue();
+    },
+  );
+
+  const started = Date.now();
+  await page.getByRole("button", { name: "Global settings" }).click();
+  await expect(page.getByRole("dialog", { name: "Global settings" })).toBeVisible({ timeout: 2500 });
+  expect(Date.now() - started).toBeLessThan(2500);
+});
+
 test("conversation deep links render the selected agent", async ({ page }) => {
   const projects = await page.request.get("/api/projects").then((response) => response.json());
   const project = projects[0] as { id: string; agents: Array<{ id: string }> };
