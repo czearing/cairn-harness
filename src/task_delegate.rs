@@ -151,9 +151,13 @@ impl Store {
             transaction.rollback().await?;
             bail!("identical delegation already reached terminal state; use its result");
         }
+        // 'waiting' is excluded deliberately: it means the assignee has already delegated its
+        // own current work and is otherwise idle, so it must remain eligible to start this new
+        // delegation immediately rather than sitting buffered until an unrelated recovery sweep
+        // frees it up. See promote_buffered_for_agent for the matching rationale.
         let (busy,): (bool,) = sqlx::query_as(
             "SELECT EXISTS(SELECT 1 FROM tasks WHERE assignee=?
-             AND status IN ('pending','claimed','waiting','deferred'))
+             AND status IN ('pending','claimed','deferred'))
              OR EXISTS(SELECT 1 FROM agents WHERE agent_id=? AND status!='idle')",
         )
         .bind(&assignee)

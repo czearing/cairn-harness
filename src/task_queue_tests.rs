@@ -416,6 +416,91 @@ async fn delegated_work_buffers_per_agent_and_promotes_oldest_after_completion()
 }
 
 #[tokio::test]
+async fn recovery_breaks_mutual_delegation_deadlock_between_waiting_agents() {
+    // Two agents each delegate to the other while both are only "waiting" on their own prior
+    // delegation (not pending/claimed/deferred). If "waiting" counted as busy, neither
+    // delegation could ever become claimable and the pair would deadlock forever, since
+    // nothing would ever complete to retrigger promotion.
+    let root = tempdir().unwrap();
+    let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+    for agent in ["a", "b"] {
+        store.register(&worker(agent)).await.unwrap();
+    }
+    store
+        .create_message("human", "a", "root-a", "Root for a.")
+        .await
+        .unwrap();
+    store
+        .create_message("human", "b", "root-b", "Root for b.")
+        .await
+        .unwrap();
+    store.claim("a").await.unwrap().unwrap();
+    store.claim("b").await.unwrap().unwrap();
+
+    let child_of_b = store
+        .delegate_current("a", "b", "a-to-b", "a asks b.")
+        .await
+        .unwrap();
+    let child_of_a = store
+        .delegate_current("b", "a", "b-to-a", "b asks a.")
+        .await
+        .unwrap();
+
+    // child_of_b legitimately buffers: at the moment a delegates to b, b is still actively
+    // claimed on its own root task (not yet waiting), so b is genuinely busy.
+    assert_eq!(store.task_status(&child_of_b).await.unwrap(), "buffered");
+    // child_of_a is created after b has already fallen back to "waiting" on child_of_b, so a
+    // is free and this must be immediately claimable.
+    assert_eq!(store.task_status(&child_of_a).await.unwrap(), "pending");
+
+    store.recover("9999-12-31T23:59:59Z").await.unwrap();
+
+    assert_eq!(
+        store.task_status(&child_of_b).await.unwrap(),
+        "pending",
+        "b's buffered task must become claimable once b itself is only waiting, or the two \
+         agents deadlock forever"
+    );
+    assert_eq!(
+        store.task_status(&child_of_a).await.unwrap(),
+        "pending",
+        "a's task must remain claimable"
+    );
+    assert!(store.claim("a").await.unwrap().is_some());
+    assert!(store.claim("b").await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn promote_buffered_for_agent_ignores_a_merely_waiting_parent() {
+    // A buffered delegation stranded behind a "waiting" (not pending/claimed/deferred) parent
+    // task for the same assignee must still promote: "waiting" means the agent delegated its
+    // own current work and is otherwise idle, so it remains free to pick up other work.
+    let root = tempdir().unwrap();
+    let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+    store.register(&worker("worker")).await.unwrap();
+    sqlx::query(
+        "INSERT INTO tasks(id,kind,source,creator,assignee,topic,body,status,created_at)
+         VALUES('own-waiting','root','manual','human','worker','own','body','waiting',
+         '2026-07-15T09:00:00Z')",
+    )
+    .execute(&store.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO tasks(id,kind,source,creator,assignee,topic,body,status,created_at)
+         VALUES('buffered','delegation','agent','lead','worker','work','body','buffered',
+         '2026-07-15T10:00:00Z')",
+    )
+    .execute(&store.pool)
+    .await
+    .unwrap();
+
+    assert!(store.promote_buffered_for_agent("worker").await.unwrap());
+
+    assert_eq!(store.task_status("buffered").await.unwrap(), "pending");
+}
+
+#[tokio::test]
 async fn recovery_promotes_stranded_buffered_delegation() {
     let root = tempdir().unwrap();
     let store = Store::open(&root.path().join("harness.db")).await.unwrap();

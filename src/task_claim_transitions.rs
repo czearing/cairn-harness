@@ -3,6 +3,12 @@ use anyhow::Result;
 
 impl Store {
     pub async fn promote_buffered_for_agent(&self, agent: &str) -> Result<bool> {
+        // 'waiting' deliberately does not count as busy here: it means the agent has
+        // already delegated its current work and is idle except for that delegation, so it
+        // must remain free to pick up other buffered work. Two agents that delegate to each
+        // other (a->b and b->a) both land in 'waiting' at the same time; if 'waiting' blocked
+        // promotion, neither buffered child could ever become claimable and the pair would
+        // deadlock forever, since nothing would ever complete to retrigger promotion.
         let result = sqlx::query(
             "UPDATE tasks SET status='pending'
              WHERE id=(
@@ -12,7 +18,7 @@ impl Store {
              )
              AND NOT EXISTS(
                SELECT 1 FROM tasks active WHERE active.assignee=?
-               AND active.status IN ('pending','claimed','waiting','deferred')
+               AND active.status IN ('pending','claimed','deferred')
              )",
         )
         .bind(agent)
