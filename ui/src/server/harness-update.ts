@@ -2,15 +2,19 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
-// Every machine running the harness keeps ITSELF current: instrumentation.ts polls this on an
-// interval so a human never has to git pull + cargo build + restart by hand on each computer.
-// A clean, fast-forwardable checkout is fetched, the release binary is rebuilt, and every
-// running project is stopped (to free the locked .exe on Windows) and restarted on the new
-// binary. Dirty or diverged checkouts are left alone — a developer's work in progress on this
-// repo is never stashed, rebased, or discarded behind their back.
-
-const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
-const RETRY_BASE_MS = 60 * 1000;
+// Every machine running the harness keeps ITSELF current: instrumentation.ts polls this on a
+// fixed interval so a human never has to git pull + cargo build + restart by hand on each
+// computer. A clean, fast-forwardable checkout is fetched, the release binary is rebuilt, and
+// every running project is stopped (to free the locked .exe on Windows) and restarted on the
+// new binary. Dirty or diverged checkouts are left alone — a developer's work in progress on
+// this repo is never stashed, rebased, or discarded behind their back.
+//
+// A `git fetch` against this repo measures ~1.1s (see the harness auto-update Brain node), so a
+// tight poll costs nothing worth trading away: PUBLISH_LATENCY_MS is how long a pushed commit can
+// sit unpicked-up on another machine, and RETRY_MS is how often a transient fetch failure (no
+// network, a blocked port) is retried without waiting out the full interval.
+const PUBLISH_LATENCY_MS = 30_000;
+const RETRY_MS = 5_000;
 
 export type HarnessUpdateStatus = "updated" | "current" | "skipped" | "failed";
 
@@ -39,27 +43,16 @@ interface FastForwardInputs {
 }
 
 export function harnessRepoRoot(): string {
-  return process.env.HARNESS_REPO_ROOT
-    || path.resolve(/* turbopackIgnore: true */ process.cwd(), "..");
+  return path.resolve(/* turbopackIgnore: true */ process.cwd(), "..");
 }
 
-export function autoUpdateStatePath(): string {
-  return process.env.HARNESS_AUTO_UPDATE_STATE
-    || path.join(harnessRepoRoot(), ".git", "harness-auto-update-state.json");
+export function defaultAutoUpdateStatePath(root: string): string {
+  return path.join(root, ".git", "harness-auto-update-state.json");
 }
 
-export function autoUpdateEnabled(environment: Partial<NodeJS.ProcessEnv> = process.env): boolean {
-  return environment.HARNESS_AUTO_UPDATE !== "0" && environment.HARNESS_DISABLE_AUTO_UPDATE !== "1";
-}
-
-export function autoUpdateIntervalMs(environment: NodeJS.ProcessEnv = process.env): number {
-  const configured = Number(environment.HARNESS_AUTO_UPDATE_INTERVAL_MS);
-  return Number.isFinite(configured) && configured >= 30_000 ? configured : DEFAULT_INTERVAL_MS;
-}
-
-export function readAutoUpdateState(): HarnessUpdateState {
+export function readAutoUpdateState(statePath: string): HarnessUpdateState {
   try {
-    const parsed = JSON.parse(readFileSync(autoUpdateStatePath(), "utf8")) as Partial<HarnessUpdateState>;
+    const parsed = JSON.parse(readFileSync(statePath, "utf8")) as Partial<HarnessUpdateState>;
     return {
       lastCheckTs: Number(parsed.lastCheckTs || 0),
       lastRevision: String(parsed.lastRevision || ""),
@@ -76,18 +69,16 @@ export function readAutoUpdateState(): HarnessUpdateState {
   }
 }
 
-function writeAutoUpdateState(state: HarnessUpdateState): void {
-  const file = autoUpdateStatePath();
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(state));
+function writeAutoUpdateState(statePath: string, state: HarnessUpdateState): void {
+  mkdirSync(path.dirname(statePath), { recursive: true });
+  writeFileSync(statePath, JSON.stringify(state));
 }
 
-/** Pure backoff: a transient failure (no network, a blocked fetch) must not cost a whole interval
- *  of update latency, but a persistently broken checkout must not be retried every poll either. */
+/** Pure backoff: a transient failure (no network, a blocked fetch) retries in RETRY_MS and
+ *  doubles from there, but never waits longer than the normal interval. */
 export function retryDelayMs(consecutiveFailures: number, intervalMs: number): number {
   if (consecutiveFailures <= 0) return intervalMs;
-  const backoff = RETRY_BASE_MS * 2 ** (consecutiveFailures - 1);
-  return Math.min(intervalMs, backoff);
+  return Math.min(intervalMs, RETRY_MS * 2 ** (consecutiveFailures - 1));
 }
 
 /** Pure throttle: a check is due once its scheduled time arrives, and always on a first or
@@ -176,30 +167,33 @@ export async function runHarnessUpdate(options: { root?: string } = {}): Promise
   }
 }
 
-export function recordAutoUpdateResult(result: HarnessUpdateResult, now = Date.now()): void {
-  const prior = readAutoUpdateState();
-  const interval = autoUpdateIntervalMs();
+export function recordAutoUpdateResult(statePath: string, result: HarnessUpdateResult, now = Date.now()): void {
+  const prior = readAutoUpdateState(statePath);
   // Only a hard failure backs off. "skipped" is a standing condition (dirty checkout, not a git
   // checkout) that a fast retry cannot clear, so it keeps the normal cadence.
   const consecutiveFailures = result.status === "failed" ? prior.consecutiveFailures + 1 : 0;
-  writeAutoUpdateState({
+  writeAutoUpdateState(statePath, {
     lastCheckTs: now,
     lastRevision: result.to || result.from,
     lastStatus: result.status,
     lastReason: result.reason,
     consecutiveFailures,
-    nextCheckTs: now + retryDelayMs(consecutiveFailures, interval),
+    nextCheckTs: now + retryDelayMs(consecutiveFailures, PUBLISH_LATENCY_MS),
   });
 }
 
-/** Poll entry point: called on an interval from instrumentation.ts. Runs synchronously in the
- *  same Node process — no subprocess to spawn here, since the UI server is already the
- *  always-on process on each machine. */
-export async function maybeCheckForHarnessUpdate(now = Date.now()): Promise<HarnessUpdateResult | null> {
-  if (!autoUpdateEnabled()) return null;
-  const state = readAutoUpdateState();
-  if (!autoUpdateDue(state, now, autoUpdateIntervalMs())) return null;
-  const result = await runHarnessUpdate();
-  recordAutoUpdateResult(result, now);
+/** Poll entry point: called every RETRY_MS from instrumentation.ts so a backoff retry is never
+ *  missed, but real git/build work only happens once autoUpdateDue() says a check is actually
+ *  due. Runs synchronously in the same Node process — no subprocess to spawn here, since the UI
+ *  server is already the always-on process on each machine. */
+export async function maybeCheckForHarnessUpdate(options: { root?: string; statePath?: string } = {}, now = Date.now()): Promise<HarnessUpdateResult | null> {
+  const root = options.root || harnessRepoRoot();
+  const statePath = options.statePath || defaultAutoUpdateStatePath(root);
+  const state = readAutoUpdateState(statePath);
+  if (!autoUpdateDue(state, now, PUBLISH_LATENCY_MS)) return null;
+  const result = await runHarnessUpdate({ root });
+  recordAutoUpdateResult(statePath, result, now);
   return result;
 }
+
+export const harnessUpdatePollMs = RETRY_MS;

@@ -1,7 +1,7 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (process.env.NEXT_PHASE === "phase-production-build" || process.env.npm_lifecycle_event === "build") return;
-  const [{ startAllProjects }, { supervisorReconcileIntervalMs }, { maybeCheckForHarnessUpdate, autoUpdateIntervalMs }] = await Promise.all([
+  const [{ startAllProjects }, { supervisorReconcileIntervalMs }, { maybeCheckForHarnessUpdate, harnessUpdatePollMs }] = await Promise.all([
     import("@/server/supervisor"),
     import("@/server/supervisor-policy"),
     import("@/server/harness-update"),
@@ -21,6 +21,6 @@ export async function register() {
         }
       })
       .catch((error) => console.error("[harness-update] check failed", error));
-  }, Math.min(autoUpdateIntervalMs(), 60_000));
+  }, harnessUpdatePollMs);
   updateCheck.unref();
 }

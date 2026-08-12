@@ -7,18 +7,19 @@ import { execFileSync } from "node:child_process";
 
 import {
   autoUpdateDue,
-  autoUpdateEnabled,
-  autoUpdateIntervalMs,
-  autoUpdateStatePath,
+  defaultAutoUpdateStatePath,
   fastForwardDecision,
+  harnessUpdatePollMs,
+  maybeCheckForHarnessUpdate,
   readAutoUpdateState,
   recordAutoUpdateResult,
   retryDelayMs,
   runHarnessUpdate,
 } from "./harness-update.ts";
 
-const HOUR = 60 * 60 * 1000;
-const MINUTE = 60 * 1000;
+const PUBLISH_LATENCY_MS = 30_000;
+const RETRY_MS = 5_000;
+
 const state = (lastCheckTs: number, overrides: { consecutiveFailures?: number; nextCheckTs?: number } = {}) => ({
   lastCheckTs,
   lastRevision: "",
@@ -29,56 +30,37 @@ const state = (lastCheckTs: number, overrides: { consecutiveFailures?: number; n
 });
 
 let dir = "";
-const previousState = process.env.HARNESS_AUTO_UPDATE_STATE;
-const previousInterval = process.env.HARNESS_AUTO_UPDATE_INTERVAL_MS;
-const previousEnabled = process.env.HARNESS_AUTO_UPDATE;
+let statePath = "";
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "harness-auto-update-"));
-  process.env.HARNESS_AUTO_UPDATE_STATE = join(dir, "state.json");
-  delete process.env.HARNESS_AUTO_UPDATE_INTERVAL_MS;
-  delete process.env.HARNESS_AUTO_UPDATE;
+  statePath = join(dir, "state.json");
 });
 
 afterEach(() => {
-  if (previousState === undefined) delete process.env.HARNESS_AUTO_UPDATE_STATE;
-  else process.env.HARNESS_AUTO_UPDATE_STATE = previousState;
-  if (previousInterval === undefined) delete process.env.HARNESS_AUTO_UPDATE_INTERVAL_MS;
-  else process.env.HARNESS_AUTO_UPDATE_INTERVAL_MS = previousInterval;
-  if (previousEnabled === undefined) delete process.env.HARNESS_AUTO_UPDATE;
-  else process.env.HARNESS_AUTO_UPDATE = previousEnabled;
   rmSync(dir, { recursive: true, force: true });
 });
 
 describe("harness auto-update throttle", () => {
   it("a never-checked machine is due immediately", () => {
-    assert.equal(autoUpdateDue(state(0), 1_000, HOUR), true);
+    assert.equal(autoUpdateDue(state(0), 1_000, PUBLISH_LATENCY_MS), true);
   });
 
   it("a recent check is not due again", () => {
-    assert.equal(autoUpdateDue(state(10 * HOUR), 10 * HOUR + 60_000, HOUR), false);
+    assert.equal(autoUpdateDue(state(10 * PUBLISH_LATENCY_MS), 10 * PUBLISH_LATENCY_MS + 1_000, PUBLISH_LATENCY_MS), false);
   });
 
   it("the check becomes due once the interval elapses", () => {
-    assert.equal(autoUpdateDue(state(10 * HOUR), 11 * HOUR, HOUR), true);
+    assert.equal(autoUpdateDue(state(10 * PUBLISH_LATENCY_MS), 11 * PUBLISH_LATENCY_MS, PUBLISH_LATENCY_MS), true);
   });
 
   it("a future stamp from clock skew never wedges updates off", () => {
-    assert.equal(autoUpdateDue(state(99 * HOUR), 10 * HOUR, HOUR), true);
+    assert.equal(autoUpdateDue(state(99 * PUBLISH_LATENCY_MS), 10 * PUBLISH_LATENCY_MS, PUBLISH_LATENCY_MS), true);
   });
 
-  it("the interval is configurable and rejects nonsense values", () => {
-    assert.equal(autoUpdateIntervalMs(), 5 * MINUTE);
-    process.env.HARNESS_AUTO_UPDATE_INTERVAL_MS = "45000";
-    assert.equal(autoUpdateIntervalMs(), 45000);
-    process.env.HARNESS_AUTO_UPDATE_INTERVAL_MS = "not-a-number";
-    assert.equal(autoUpdateIntervalMs(), 5 * MINUTE);
-  });
-
-  it("is enabled by default and can be disabled either env way", () => {
-    assert.equal(autoUpdateEnabled({}), true);
-    assert.equal(autoUpdateEnabled({ HARNESS_AUTO_UPDATE: "0" }), false);
-    assert.equal(autoUpdateEnabled({ HARNESS_DISABLE_AUTO_UPDATE: "1" }), false);
+  it("the poll rate is tighter than the publish-latency interval so a backoff retry is never missed", () => {
+    assert.equal(harnessUpdatePollMs, RETRY_MS);
+    assert.ok(harnessUpdatePollMs < PUBLISH_LATENCY_MS);
   });
 });
 
@@ -127,48 +109,52 @@ describe("fast-forward policy", () => {
 
 describe("failure backoff", () => {
   it("a healthy check keeps the normal cadence", () => {
-    assert.equal(retryDelayMs(0, HOUR), HOUR);
+    assert.equal(retryDelayMs(0, PUBLISH_LATENCY_MS), PUBLISH_LATENCY_MS);
   });
 
-  it("a failed check retries in a minute and doubles, never exceeding the interval", () => {
-    assert.equal(retryDelayMs(1, HOUR), MINUTE);
-    assert.equal(retryDelayMs(2, HOUR), 2 * MINUTE);
-    assert.equal(retryDelayMs(3, HOUR), 4 * MINUTE);
-    assert.equal(retryDelayMs(20, HOUR), HOUR);
+  it("a failed check retries in RETRY_MS and doubles, never exceeding the interval", () => {
+    assert.equal(retryDelayMs(1, PUBLISH_LATENCY_MS), RETRY_MS);
+    assert.equal(retryDelayMs(2, PUBLISH_LATENCY_MS), 2 * RETRY_MS);
+    assert.equal(retryDelayMs(3, PUBLISH_LATENCY_MS), 4 * RETRY_MS);
+    assert.equal(retryDelayMs(20, PUBLISH_LATENCY_MS), PUBLISH_LATENCY_MS);
   });
 
   it("the recorded result is readable for status reporting", () => {
-    recordAutoUpdateResult({ status: "updated", from: "aaa", to: "bbb", reason: "fast-forwarded to origin/master" }, 42);
-    assert.deepEqual(readAutoUpdateState(), {
+    recordAutoUpdateResult(statePath, { status: "updated", from: "aaa", to: "bbb", reason: "fast-forwarded to origin/master" }, 42);
+    assert.deepEqual(readAutoUpdateState(statePath), {
       lastCheckTs: 42,
       lastRevision: "bbb",
       lastStatus: "updated",
       lastReason: "fast-forwarded to origin/master",
       consecutiveFailures: 0,
-      nextCheckTs: 42 + 5 * MINUTE,
+      nextCheckTs: 42 + PUBLISH_LATENCY_MS,
     });
   });
 
   it("a fetch failure schedules a fast retry instead of burning the interval", () => {
-    recordAutoUpdateResult({ status: "failed", from: "aaa", to: "", reason: "fetch failed: network" }, 10 * HOUR);
-    const after = readAutoUpdateState();
+    recordAutoUpdateResult(statePath, { status: "failed", from: "aaa", to: "", reason: "fetch failed: network" }, 10 * PUBLISH_LATENCY_MS);
+    const after = readAutoUpdateState(statePath);
     assert.equal(after.consecutiveFailures, 1);
-    assert.equal(after.nextCheckTs, 10 * HOUR + MINUTE);
+    assert.equal(after.nextCheckTs, 10 * PUBLISH_LATENCY_MS + RETRY_MS);
   });
 
   it("a success clears the backoff so failures do not accumulate forever", () => {
-    recordAutoUpdateResult({ status: "failed", from: "aaa", to: "", reason: "fetch failed" }, HOUR);
-    recordAutoUpdateResult({ status: "failed", from: "aaa", to: "", reason: "fetch failed" }, 2 * HOUR);
-    assert.equal(readAutoUpdateState().consecutiveFailures, 2);
-    recordAutoUpdateResult({ status: "current", from: "aaa", to: "aaa", reason: "already up to date" }, 3 * HOUR);
-    const healthy = readAutoUpdateState();
+    recordAutoUpdateResult(statePath, { status: "failed", from: "aaa", to: "", reason: "fetch failed" }, PUBLISH_LATENCY_MS);
+    recordAutoUpdateResult(statePath, { status: "failed", from: "aaa", to: "", reason: "fetch failed" }, 2 * PUBLISH_LATENCY_MS);
+    assert.equal(readAutoUpdateState(statePath).consecutiveFailures, 2);
+    recordAutoUpdateResult(statePath, { status: "current", from: "aaa", to: "aaa", reason: "already up to date" }, 3 * PUBLISH_LATENCY_MS);
+    const healthy = readAutoUpdateState(statePath);
     assert.equal(healthy.consecutiveFailures, 0);
-    assert.equal(healthy.nextCheckTs, 3 * HOUR + 5 * MINUTE);
+    assert.equal(healthy.nextCheckTs, 3 * PUBLISH_LATENCY_MS + PUBLISH_LATENCY_MS);
   });
 
   it("a corrupt stamp reads as never-checked instead of throwing", () => {
-    writeFileSync(autoUpdateStatePath(), "{not json");
-    assert.equal(readAutoUpdateState().lastCheckTs, 0);
+    writeFileSync(statePath, "{not json");
+    assert.equal(readAutoUpdateState(statePath).lastCheckTs, 0);
+  });
+
+  it("the default state path lives inside the checkout's own .git directory", () => {
+    assert.equal(defaultAutoUpdateStatePath(dir), join(dir, ".git", "harness-auto-update-state.json"));
   });
 });
 
@@ -216,5 +202,29 @@ describe("runHarnessUpdate against a real local origin", () => {
 
   it("a plain directory is skipped without throwing", async () => {
     assert.equal((await runHarnessUpdate({ root: join(dir, "not-a-repo") })).status, "skipped");
+  });
+});
+
+describe("maybeCheckForHarnessUpdate end to end", () => {
+  it("checks, records state, and then throttles until the interval elapses", async () => {
+    const origin = join(dir, "origin");
+    const clone = join(dir, "clone");
+    mkdirSync(origin, { recursive: true });
+    git(origin, "init", "--initial-branch=master", ".");
+    writeFileSync(join(origin, "file.txt"), "v1");
+    git(origin, "add", ".");
+    git(origin, "commit", "-m", "v1");
+    git(dir, "clone", "--quiet", origin, clone);
+
+    const first = await maybeCheckForHarnessUpdate({ root: clone, statePath }, 1_000);
+    assert.equal(first?.status, "current");
+    assert.equal(readAutoUpdateState(statePath).lastCheckTs, 1_000);
+
+    // Still inside the publish-latency window: a second call this soon does no git work at all.
+    const second = await maybeCheckForHarnessUpdate({ root: clone, statePath }, 1_000 + RETRY_MS);
+    assert.equal(second, null);
+
+    const third = await maybeCheckForHarnessUpdate({ root: clone, statePath }, 1_000 + PUBLISH_LATENCY_MS);
+    assert.equal(third?.status, "current");
   });
 });
