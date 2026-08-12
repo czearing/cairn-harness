@@ -13,11 +13,12 @@ use tokio::time::sleep;
 use {anyhow::Result, chrono::Utc};
 pub(crate) async fn run(mut ctx: WorkerContext) -> Result<()> {
     let poll = Duration::from_millis(ctx.policy.poll_interval_ms);
+    let mut config_mtime = None;
     loop {
         if *ctx.shutdown.borrow() {
             return Ok(());
         }
-        refresh_config(&mut ctx)?;
+        refresh_config(&mut ctx, &mut config_mtime)?;
         if let Some(message) = ctx.store.claim(&ctx.worker.id).await? {
             process(&ctx, message).await?;
         } else {
