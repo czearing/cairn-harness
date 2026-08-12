@@ -18,21 +18,31 @@ pub struct TurnRecord<'a> {
     pub completed_at: &'a str,
 }
 
+/// Cap on how many of an agent's most recent turns get replayed into a fresh session. The
+/// `turns` table itself is never trimmed -- this only bounds what gets resent as a prompt, so
+/// a long-running agent's context payload cannot grow forever between operator resets.
+const MAX_REPLAYED_TURNS: i64 = 20;
+
 impl Store {
     /// The turns an agent replays into a fresh session. A context reset records a watermark
     /// instead of deleting turns, so the operator keeps the readable transcript while the
-    /// agent stops carrying anything that happened before the reset.
+    /// agent stops carrying anything that happened before the reset. Only the most recent
+    /// `MAX_REPLAYED_TURNS` (post-reset) are ever replayed -- full history stays queryable in
+    /// `turns` regardless, this just bounds what gets resent to the model on every fresh session.
     pub async fn agent_context(&self, agent_id: &str) -> Result<String> {
         let cleared_at = self.context_cleared_at(agent_id).await?;
-        let turns: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        let mut turns: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
             "SELECT inbound_topic,inbound_body,output_json,completed_at
              FROM turns
              WHERE agent_id=? AND status IN ('completed','waiting','paused')
-             ORDER BY sequence",
+             ORDER BY sequence DESC
+             LIMIT ?",
         )
         .bind(agent_id)
+        .bind(MAX_REPLAYED_TURNS)
         .fetch_all(&self.pool)
         .await?;
+        turns.reverse();
         let mut context = String::new();
         for (topic, body, output_json, completed_at) in turns {
             if let Some(cleared_at) = &cleared_at
@@ -270,6 +280,42 @@ mod tests {
             .unwrap();
 
         assert_eq!(store.agent_context("lead").await.unwrap(), "");
+    }
+
+    #[tokio::test]
+    async fn agent_context_replays_only_the_most_recent_turns_not_full_unbounded_history() {
+        let root = tempdir().unwrap();
+        let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+        store.register(&worker()).await.unwrap();
+        // One more turn than MAX_REPLAYED_TURNS so the oldest is provably dropped from replay
+        // while the DB itself keeps every row (full history stays queryable via `transcript`).
+        let total = MAX_REPLAYED_TURNS + 1;
+        for turn in 0..total {
+            let completed_at = format!("2026-08-{:02}T00:00:00+00:00", 1 + turn);
+            record(&store, &format!("turn-{turn}"), &format!("body-{turn}"), &completed_at).await;
+        }
+
+        let context = store.agent_context("lead").await.unwrap();
+        assert!(
+            !context.contains("body-0"),
+            "the oldest turn beyond the cap must not be replayed"
+        );
+        assert!(
+            context.contains(&format!("body-{}", total - 1)),
+            "the newest turn must always be replayed"
+        );
+        assert_eq!(
+            context.matches("Prior assignment").count(),
+            MAX_REPLAYED_TURNS as usize,
+            "replay is bounded to MAX_REPLAYED_TURNS regardless of total turn count"
+        );
+
+        let all_turns = store.transcript().await.unwrap();
+        assert_eq!(
+            all_turns.len(),
+            total as usize,
+            "full history is retained in the DB even though replay is capped"
+        );
     }
 
     #[test]
