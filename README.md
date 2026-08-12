@@ -25,6 +25,19 @@ worker for every configured project. Startup installs the bundled
 `cairn-harness` skill for both Copilot and Claude so either client can create
 teams, assign a leader, submit delegated work, and message individual agents.
 
+For UI development, use dev mode instead: it skips the production build/start
+cycle and serves the dashboard with Next.js Fast Refresh, so most UI edits
+apply in place in well under a second.
+
+```powershell
+.\start.ps1 -Dev
+```
+
+It still builds the Rust binary once if `target\release\cairn-harness.exe` is
+missing, but does not rebuild it on every launch. Rebuild manually
+(`cargo build --release`) after changing Rust source, then restart the
+project's worker from the dashboard to pick it up.
+
 To install or refresh only the skills after building the binary:
 
 ```powershell

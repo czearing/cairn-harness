@@ -1,11 +1,13 @@
 param(
     [int]$Port = 3100,
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    [switch]$Dev
 )
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $ui = Join-Path $root "ui"
+$binary = Join-Path $root "target\release\cairn-harness.exe"
 
 if (-not (Get-Command copilot -ErrorAction SilentlyContinue)) {
     throw "GitHub Copilot CLI is required. Install it and run copilot login."
@@ -13,15 +15,22 @@ if (-not (Get-Command copilot -ErrorAction SilentlyContinue)) {
 
 Push-Location $root
 try {
-    cargo build --release
-    & (Join-Path $root "target\release\cairn-harness.exe") install
+    if ($Dev) {
+        # Dev mode skips the production build/start pipeline. The backend binary is only
+        # (re)built when missing, since UI iteration does not require a fresh Rust build.
+        if (-not (Test-Path $binary)) {
+            cargo build --release
+        }
+    } else {
+        cargo build --release
+    }
+    & $binary install
     Push-Location $ui
     try {
         if (-not (Test-Path "node_modules")) {
             npm ci
         }
-        npm run build
-        $env:HARNESS_BIN = Join-Path $root "target\release\cairn-harness.exe"
+        $env:HARNESS_BIN = $binary
         $env:HARNESS_PROJECT_ROOT = Join-Path $root "projects"
         if (-not $NoBrowser) {
             $url = "http://127.0.0.1:$Port"
@@ -38,7 +47,14 @@ try {
                 }
             } -ArgumentList $url | Out-Null
         }
-        npm run start -- --hostname 127.0.0.1 --port $Port
+        if ($Dev) {
+            # `next dev` (Turbopack) serves Fast Refresh: UI edits apply in place, in well
+            # under a second, with no npm run build/start cycle required.
+            npm run dev -- --hostname 127.0.0.1 --port $Port
+        } else {
+            npm run build
+            npm run start -- --hostname 127.0.0.1 --port $Port
+        }
     } finally {
         Pop-Location
     }
