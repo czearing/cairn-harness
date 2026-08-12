@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
 
@@ -19,6 +19,7 @@ export interface WorkerRecord {
 type IdentityReader = (pid: number) => ProcessIdentity | null;
 type ProcessLivenessReader = (pid: number) => boolean;
 type ProcessStartReader = (pid: number) => string | null;
+type PidLister = () => number[];
 const identityProbeTimeoutMs = 20_000;
 const identityProbeAttempts = 2;
 const windowsIdentityOperationTimeoutSec = 10;
@@ -41,6 +42,29 @@ export function resolveWorkerProcess(
   const process = readIdentity(record.pid);
   if (!process || !matchesWorkerCommand(process.command, expectedConfig)) return null;
   return { ...record, process };
+}
+
+/**
+ * Scans running processes for a watch loop already serving `expectedConfig`,
+ * regardless of whether the supervisor's own `ui-worker.json` record still
+ * references it. Reconciliation must stay idempotent even when that record
+ * is missing, stale, or was never written (for example after a manual
+ * restart) -- otherwise every reconciliation tick spawns another watch
+ * process for the same project, and duplicate watchers race each other to
+ * claim the same tasks.
+ */
+export function findRunningWorkerProcess(
+  expectedConfig: string,
+  listPids: PidLister = listCairnHarnessProcessIds,
+  readIdentity: IdentityReader = readProcessIdentity,
+): { pid: number; process: ProcessIdentity } | null {
+  for (const pid of listPids()) {
+    const identity = readIdentity(pid);
+    if (identity && matchesWorkerCommand(identity.command, expectedConfig)) {
+      return { pid, process: identity };
+    }
+  }
+  return null;
 }
 
 export function createCachedWorkerProcessResolver(
@@ -94,6 +118,58 @@ export function readProcessIdentity(pid: number): ProcessIdentity | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Lists every currently running `cairn-harness` process id, independent of
+ * any `ui-worker.json` bookkeeping, so reconciliation can detect a watch
+ * loop that is already alive before deciding to spawn another one.
+ */
+function listCairnHarnessProcessIds(): number[] {
+  try {
+    if (process.platform === "linux") return listLinuxCairnHarnessProcessIds();
+    if (process.platform === "win32") return listWindowsCairnHarnessProcessIds();
+    return listPsCairnHarnessProcessIds();
+  } catch {
+    return [];
+  }
+}
+
+function listLinuxCairnHarnessProcessIds(): number[] {
+  return readdirSync("/proc")
+    .filter((name) => /^\d+$/.test(name))
+    .map(Number)
+    .filter((pid) => {
+      try {
+        return readFileSync(`/proc/${pid}/cmdline`, "utf8").includes("cairn-harness");
+      } catch {
+        return false;
+      }
+    });
+}
+
+function listWindowsCairnHarnessProcessIds(): number[] {
+  const script = `Get-CimInstance Win32_Process -Filter "Name='cairn-harness.exe'" -OperationTimeoutSec ${windowsIdentityOperationTimeoutSec} | Select-Object -ExpandProperty ProcessId`;
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: identityProbeTimeoutMs,
+  });
+  if (result.status !== 0 || !result.stdout.trim()) return [];
+  return parsePidLines(result.stdout);
+}
+
+function listPsCairnHarnessProcessIds(): number[] {
+  const result = spawnSync("pgrep", ["-f", "cairn-harness"], { encoding: "utf8", timeout: identityProbeTimeoutMs });
+  if (result.status !== 0 || !result.stdout.trim()) return [];
+  return parsePidLines(result.stdout);
+}
+
+function parsePidLines(output: string): number[] {
+  return output
+    .split(/\r?\n/)
+    .map((line) => Number(line.trim()))
+    .filter((pid) => Number.isSafeInteger(pid) && pid > 0);
 }
 
 function isWorkerRecord(value: unknown): value is WorkerRecord {

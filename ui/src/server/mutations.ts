@@ -348,7 +348,7 @@ function validateAgentConfig(config: { roles?: Role[] }, agentId: string) {
   if (!names.has(agentId)) throw new Error("saved agent is missing");
 }
 
-export function addAgent(projectId: string, name: string, description: string, prompt: string, model: string | undefined, catalog: ModelCatalogEntry[]) {
+export function addAgent(projectId: string, name: string, description: string, prompt: string, model: string | undefined, catalog: ModelCatalogEntry[], replicaOf?: string) {
   const configPath = getProjectConfigPath(projectId);
   if (!configPath) throw new Error("Project config not found");
   const id = slug(name);
@@ -359,10 +359,36 @@ export function addAgent(projectId: string, name: string, description: string, p
   const role: Role = { name: id, title: name.trim(), description: description.trim(), prompt: prompt.trim() };
   const override = validateModelOverride(model, catalog);
   if (override) role.model = override;
+  if (replicaOf) configureReplicaRole(roles, role, replicaOf);
   config.roles = [...roles, role];
   if (!config.leader) config.leader = id;
   writeAgentConfig(configPath, config as RevisionedConfig);
   return id;
+}
+
+// Makes a new agent a parallel replica of an existing role: the harness routes root work to
+// whichever pool member is idlest instead of always the same agent. Replicas stay fully visible
+// and independently configurable (agent_kind stays "source"), unlike the unrelated "local" agent
+// concept, so the relationship is easy to see and edit from the site rather than hidden.
+function configureReplicaRole(roles: Role[], role: Role, replicaOf: string) {
+  const template = roles.find((candidate) => candidate.name === replicaOf);
+  if (!template) throw new Error("Replica source agent not found");
+  if (template.agent_kind === "local") throw new Error("Cannot replicate a managed local agent");
+  const templateId = template.replica_eligible && template.template ? template.template : template.name;
+  const pool = roles.filter((candidate) => candidate.name === templateId || candidate.template === templateId);
+  const nextOrdinal = Math.max(0, ...pool.map((candidate) => candidate.instance_ordinal || 0)) + 1;
+  role.template = templateId;
+  role.replica_eligible = true;
+  role.source_agent = templateId;
+  role.instance_ordinal = nextOrdinal;
+  role.agent_kind = "source";
+  if (!template.replica_eligible || template.template !== templateId) {
+    template.replica_eligible = true;
+    template.template = templateId;
+    template.agent_kind ||= "source";
+    template.source_agent ||= template.name;
+    if (template.instance_ordinal === undefined) template.instance_ordinal = 0;
+  }
 }
 
 export function deleteAgent(
@@ -423,6 +449,15 @@ function commitAgentDeletion(
   return operation;
 }
 
+// A "source" role's own source_agent field may point at its routing-pool template (for
+// replicas), not a parent it inherits from — so deleting a role only cascades to true
+// dependents (agent_kind="local" clones), never to independent replica siblings that merely
+// share the same routing group.
+function deletionScope(roles: ConfigRole[], selected: ConfigRole) {
+  return roles.filter((role) => role.name === selected.name
+    || (role.agent_kind === "local" && (role.source_agent || role.name) === selected.name));
+}
+
 function prepareAgentDeletion(
   config: RevisionedConfig,
   agentId: string,
@@ -435,9 +470,7 @@ function prepareAgentDeletion(
   const roles = config.roles || [];
   const selected = roles.find((role) => role.name === agentId);
   if (!selected) throw new Error("Agent not found");
-  const affected = selected.agent_kind === "local"
-    ? [selected]
-    : roles.filter((role) => (role.source_agent || role.name) === selected.name);
+  const affected = deletionScope(roles, selected);
   const affectedIds = affected.map((role) => role.name);
   if (config.leader && affectedIds.includes(config.leader)) throw new Error("Reassign leadership before deleting this agent");
   const operation: AgentDeletionOperation = {
@@ -486,9 +519,7 @@ export function previewAgentDeletion(projectId: string, agentId: string): AgentD
   const roles = config.roles || [];
   const selected = roles.find((role) => role.name === agentId);
   if (!selected) throw new Error("Agent not found");
-  const affectedRoles = selected.agent_kind === "local"
-    ? [selected]
-    : roles.filter((role) => (role.source_agent || role.name) === selected.name);
+  const affectedRoles = deletionScope(roles, selected);
   const runtime = new Map<string, { status: string; currentClaim?: string }>();
   const blockers: AgentDeletionPreview["blockers"] = [];
   const databasePath = path.join(path.resolve(path.dirname(configPath), config.root), ".cairn-harness", "harness.db");

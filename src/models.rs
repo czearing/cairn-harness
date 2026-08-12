@@ -12,6 +12,7 @@ pub struct WorkerSpec {
     pub leader: String,
     pub leader_task_limit: u64,
     pub idea_agents: Vec<String>,
+    pub delegate_agents: Vec<String>,
 }
 
 impl WorkerSpec {

@@ -14,7 +14,7 @@ export async function handleAgentPost(
   projectId: string,
   dependencies = { addAgent, getModelCatalog, restartProject, schedule: setImmediate },
 ) {
-  const data = await request.json() as { name?: string; description?: string; prompt?: string; model?: string };
+  const data = await request.json() as { name?: string; description?: string; prompt?: string; model?: string; replicaOf?: string };
   try {
     const catalog = data.model?.trim() ? await dependencies.getModelCatalog() : [];
     const id = dependencies.addAgent(
@@ -24,6 +24,7 @@ export async function handleAgentPost(
       data.prompt || "",
       data.model,
       catalog,
+      data.replicaOf?.trim() || undefined,
     );
     dependencies.schedule(() => {
       try { dependencies.restartProject(projectId); } catch (error) { console.error("Could not restart project after agent creation", error); }

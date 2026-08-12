@@ -1,7 +1,8 @@
 mod common;
 
 use cairn_harness::{
-    mcp_server::{invoke, invoke_with_producer},
+    config::ProjectConfig,
+    mcp_server::{invoke, invoke_with_idea_agents, invoke_with_producer},
     store::Store,
 };
 use serde_json::json;
@@ -193,5 +194,80 @@ async fn mcp_message_send_is_durable_and_idempotent() {
     assert_ne!(
         first["structuredContent"]["taskId"],
         later["structuredContent"]["taskId"]
+    );
+}
+
+/// A project-level `delegate_agents` setting grants `task_delegate` and
+/// `message_send` to a non-leader worker, independent of the single-leader
+/// role, so the dashboard can give a specific worker delegation capability
+/// without making it the project leader.
+#[tokio::test]
+async fn delegate_agents_setting_grants_delegation_to_a_non_leader_worker() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("project.json");
+    std::fs::write(
+        &path,
+        r#"{"name":"Test","root":".","leader":"pm","delegate_agents":["coder"],
+        "roles":[
+            {"name":"pm","description":"Product manager","prompt":"Lead."},
+            {"name":"designer","description":"Designer","prompt":"Design."},
+            {"name":"coder","description":"Engineer","prompt":"Build."}
+        ]}"#,
+    )
+    .unwrap();
+    let config = ProjectConfig::load(&path).unwrap();
+    let store = Store::open(&config.database_path()).await.unwrap();
+    for worker in config.workers() {
+        store.register(&worker).await.unwrap();
+    }
+
+    store
+        .create_message("human", "pm", "goal", "Build.")
+        .await
+        .unwrap();
+    store.claim("pm").await.unwrap().unwrap();
+    store
+        .delegate_current_compatible("pm", "coder", None, "goal", "Build it.")
+        .await
+        .unwrap();
+    store.claim("coder").await.unwrap().unwrap();
+    store
+        .set_state("coder", "working", Some("goal"))
+        .await
+        .unwrap();
+    let arguments = json!({"to":"designer","topic":"design","body":"Design it."});
+    invoke_with_idea_agents(&store, "coder", "pm", "", "coder", "task_delegate", &arguments)
+        .await
+        .unwrap();
+    assert_eq!(store.task_count("pending").await.unwrap(), 1);
+
+    invoke_with_idea_agents(
+        &store,
+        "coder",
+        "pm",
+        "",
+        "coder",
+        "message_send",
+        &json!({"to":"designer","topic":"note","body":"Heads up."}),
+    )
+    .await
+    .unwrap();
+
+    store.claim("designer").await.unwrap().unwrap();
+    let error = invoke_with_idea_agents(
+        &store,
+        "designer",
+        "pm",
+        "",
+        "coder",
+        "task_delegate",
+        &json!({"to":"coder","topic":"x","body":"y"}),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("only available to the project leader or an agent granted delegation capability")
     );
 }

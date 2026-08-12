@@ -156,6 +156,10 @@ fn agent(
         format!("CAIRN_HARNESS_AGENT={}", worker.id),
         format!("CAIRN_HARNESS_LEADER={}", worker.leader),
         format!("CAIRN_HARNESS_IDEA_AGENTS={}", worker.idea_agents.join(",")),
+        format!(
+            "CAIRN_HARNESS_DELEGATE_AGENTS={}",
+            worker.delegate_agents.join(",")
+        ),
         format!("CAIRN_HARNESS_RUNTIME_ID={runtime_id}"),
         format!(
             "CAIRN_HARNESS_EXECUTABLE={}",
@@ -206,6 +210,7 @@ mod tests {
             leader: "writer".into(),
             leader_task_limit: 3,
             idea_agents: Vec::new(),
+            delegate_agents: Vec::new(),
         };
         store.register(&worker).await.unwrap();
         store
@@ -240,6 +245,7 @@ mod tests {
             leader: "writer".into(),
             leader_task_limit: 3,
             idea_agents: Vec::new(),
+            delegate_agents: Vec::new(),
         };
         store.register(&worker).await.unwrap();
         let config = CopilotConfig {
@@ -317,6 +323,7 @@ mod tests {
             leader: "writer".into(),
             leader_task_limit: 3,
             idea_agents: Vec::new(),
+            delegate_agents: Vec::new(),
         };
         store.register(&worker).await.unwrap();
         let runner = PersistentCopilotRunner::new(CopilotConfig {

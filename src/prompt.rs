@@ -67,7 +67,7 @@ pub fn build(
     } else if task.kind == "generator" {
         writeln!(
             prompt,
-            "Call task_create once with a self-contained task. Do not execute or delegate it."
+            "Call team_status first to see who is idle or overloaded right now. Call task_create once with a fully self-contained task. You are the delegator: read the Peers list above and set 'to' to the exact peer agent id you are choosing to hand this to (never yourself, never an idea agent); Harness assigns it to exactly that agent and nothing routes or picks a target for you. The task body must be the complete, immediately actionable procedure for that assignee, written as instructions to execute right now in their very next turn. This turn is only about filing that task: do not personally execute the work yourself and do not use task_delegate or message_send to also notify anyone (task_create alone assigns it). Never write the filed task's own body telling its assignee to defer, skip execution, or only create a placeholder for later; that restriction applies solely to this filing turn, never to the task you hand off."
         )
         .unwrap();
     } else if task.is_peer_message() {
@@ -76,17 +76,19 @@ pub fn build(
             "Peer note. Do not delegate or acknowledge. Use message_send only if its sender needs new information; the host closes this note."
         )
         .unwrap();
-    } else if worker.id == config.leader() {
+    } else if worker.id == config.leader()
+        || worker.delegate_agents.iter().any(|delegate| delegate == &worker.id)
+    {
         writeln!(
             prompt,
-            "Delegate only disjoint work by role with task_delegate and include the complete requirement and acceptance checks. Never call Task, read_agent, write_agent, or list_agents; Harness resumes you when children finish, so do not poll or duplicate their work. When doing work yourself, return the complete result once in your final assistant response."
+            "Delegate only disjoint work by role with task_delegate and include the complete requirement and acceptance checks. Call team_status any time you need a fresh read on who is idle, busy, or backlogged before delegating. Never call Task, read_agent, write_agent, or list_agents; Harness resumes you when children finish, so do not poll or duplicate their work. When doing work yourself, return the complete result once in your final assistant response."
         )
         .unwrap();
         writeln!(prompt, "{AUTONOMOUS_COMPLETION}").unwrap();
     } else {
         writeln!(
             prompt,
-            "Do this assignment yourself and return the complete result once in your final assistant response. Never call Task, read_agent, write_agent, or list_agents; do not delegate, poll, duplicate, relay, or leave a long-lived server running."
+            "Do this assignment yourself and return the complete result once in your final assistant response. Never call Task, read_agent, write_agent, or list_agents; do not delegate, poll, duplicate, relay, or leave a long-lived server running. Call team_status only if you need to confirm current workload; it is informational and does not contact anyone."
         )
         .unwrap();
         writeln!(prompt, "{AUTONOMOUS_COMPLETION}").unwrap();

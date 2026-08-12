@@ -2534,6 +2534,7 @@ fn project_config(root: std::path::PathBuf) -> ProjectConfig {
         leader_task_limit: Some(3),
         max_active_tasks: None,
         idea_agents: Vec::new(),
+        delegate_agents: Vec::new(),
         producer: None,
         producer_limit: None,
         producer_prompt: None,
@@ -2568,6 +2569,7 @@ fn contention_config(root: std::path::PathBuf) -> ProjectConfig {
         leader_task_limit: Some(3),
         max_active_tasks: None,
         idea_agents: Vec::new(),
+        delegate_agents: Vec::new(),
         producer: Some("producer".into()),
         producer_limit: Some(1),
         producer_prompt: None,
@@ -2604,6 +2606,7 @@ fn worker(id: &str) -> WorkerSpec {
         leader: "paused".into(),
         leader_task_limit: 3,
         idea_agents: Vec::new(),
+        delegate_agents: Vec::new(),
     }
 }
 

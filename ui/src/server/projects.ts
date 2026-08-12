@@ -112,7 +112,7 @@ function readProjectRegistration(configPath: string): ProjectRegistration {
   const paused = existsSync(path.join(path.dirname(configPath), ".cairn-paused"));
   const leader = config.leader || config.roles[0]?.name;
   const ideaAgents = ideaAgentConfig(config);
-  const ideaIds = new Set(ideaAgents.filter((idea) => idea.agentId !== leader).map((idea) => idea.agentId));
+  const ideaIds = new Set(ideaAgents.map((idea) => idea.agentId));
   const base: Project = {
     id, name: config.name, root, workDir: config.work_dir, paused,
     leaderTaskLimit: config.leader_task_limit || 3, maxActiveTasks: config.max_active_tasks,
@@ -148,7 +148,7 @@ function readProject({ config, root, id, paused, base }: ProjectRegistration, op
         WHERE kind='root' AND source='automatic' AND creator=?
         AND status IN ('pending','claimed','waiting','deferred','buffered','backlog')`, idea.agentId),
     }));
-    const ideaIds = new Set(ideaAgents.filter((idea) => idea.agentId !== leader).map((idea) => idea.agentId));
+    const ideaIds = new Set(ideaAgents.map((idea) => idea.agentId));
     const agents = config.roles
       .map((role) => runtimeAgents.has(role.name)
         ? {
@@ -198,14 +198,14 @@ function readProject({ config, root, id, paused, base }: ProjectRegistration, op
       ));
     const delegatedActions = readDelegatedActions(db, paused);
     const releases = count(db, "SELECT COUNT(*) count FROM releases");
-    const workItemCount = count(db, `SELECT COUNT(*) count FROM tasks WHERE ${manualLeaderWorkItemRoot}`, leader);
+    const workItemCount = count(db, `SELECT COUNT(*) count FROM tasks WHERE ${manualLeaderWorkItemRoot}`, leader, leader);
     const activeWorkCount = count(db, `SELECT COUNT(*) count FROM tasks WHERE ${manualLeaderWorkItemRoot}
-      AND status IN ('pending','claimed','waiting','deferred')`, leader);
+      AND status IN ('pending','claimed','waiting','deferred')`, leader, leader);
     const delegatedTaskCount = count(db, `SELECT COUNT(*) count FROM tasks
       WHERE kind='delegation' AND source='agent' AND status IN ('pending','claimed','waiting','deferred')`);
     const backlogTaskCount = count(db, `SELECT COUNT(*) count FROM tasks WHERE
       (kind='delegation' AND source='agent' AND status IN ('buffered','backlog'))
-      OR (${manualLeaderWorkItemRoot} AND status='backlog')`, leader);
+      OR (${manualLeaderWorkItemRoot} AND status='backlog')`, leader, leader);
     return { ...base, agents, ideaAgents, activity, workItems, delegatedActions, releases, workItemCount, activeWorkCount, delegatedTaskCount, backlogTaskCount };
   } finally {
     db.close();

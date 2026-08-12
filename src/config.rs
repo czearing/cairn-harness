@@ -18,6 +18,12 @@ pub struct ProjectConfig {
     pub max_active_tasks: Option<u64>,
     #[serde(default)]
     pub idea_agents: Vec<IdeaAgentConfig>,
+    /// Non-leader agents granted the same delegation/messaging capability as
+    /// the project leader (`task_delegate`, `message_send`). The leader
+    /// always has this capability implicitly and never needs to be listed
+    /// here.
+    #[serde(default)]
+    pub delegate_agents: Vec<String>,
     // Legacy single-producer fields remain readable for existing projects.
     pub producer: Option<String>,
     pub producer_limit: Option<u64>,

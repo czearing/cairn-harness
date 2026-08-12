@@ -36,6 +36,7 @@ impl AgentRunner for PoemRunner {
                     .create_from_generator(
                         "author",
                         "author",
+                        None,
                         "poem",
                         &format!("Write poem {number} about rain in a cup."),
                     )

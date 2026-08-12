@@ -48,6 +48,7 @@ impl ProjectConfig {
                     .into_iter()
                     .map(|idea| idea.agent)
                     .collect(),
+                delegate_agents: self.delegate_agents.clone(),
             })
             .collect()
     }

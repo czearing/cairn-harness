@@ -2,6 +2,7 @@
 
 import { Crown, Sparkles } from "lucide-react";
 import type { Agent } from "@/lib/types";
+import { agentCapability } from "@/lib/agent-capability";
 import { agentTitle } from "@/lib/agent-label";
 import { dashboardHref } from "@/lib/dashboard-route";
 import { AgentActionsMenu } from "../AgentActionsMenu/AgentActionsMenu";
@@ -21,18 +22,16 @@ interface Props {
 
 export function AgentCard({ projectId, agent, color, avatar, onClick, onConfigure, onPrefetch, onPauseToggle, onClearContext, onDelete, onDeletionPreview }: Props) {
   const title = agentTitle(agent);
+  const capability = agentCapability(agent);
   const settingsHref = dashboardHref({ kind: "agent-settings", projectId, agentId: agent.id });
   return <AgentCardSurface
     agentId={agent.id}
     avatar={avatar}
-    avatarBadge={agent.isLeader
-      ? <Crown size={12} />
-      : agent.isIdeaAgent
-        ? <Sparkles size={11} />
-        : undefined}
-    avatarBadgeLabel={agent.isLeader ? "Project leader" : agent.isIdeaAgent ? "Idea agent" : undefined}
-    avatarBadgePlacement={agent.isIdeaAgent ? "bottom" : "top"}
-    avatarBadgeTone={agent.isLeader ? "warning" : "info"}
+    avatarBadges={[
+      ...(agent.isLeader ? [{ icon: <Crown size={12} />, label: "Project leader", placement: "top" as const, tone: "warning" as const }] : []),
+      ...(agent.isIdeaAgent ? [{ icon: <Sparkles size={11} />, label: "Idea agent", placement: "bottom" as const, tone: "info" as const }] : []),
+    ]}
+    capability={capability}
     color={color}
     initials={agent.id.slice(0, 2).toUpperCase()}
     onConfigure={onConfigure}

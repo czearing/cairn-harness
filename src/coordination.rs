@@ -24,43 +24,8 @@ impl Store {
                 json!({ "peer_context": notes }).to_string()
             });
         }
-        let agents: Vec<(String, String, Option<String>, i64, i64)> = sqlx::query_as(
-            "SELECT agent.agent_id,agent.status,agent.current_topic,
-               (SELECT COUNT(*) FROM tasks task
-                WHERE task.assignee=agent.agent_id AND task.status='pending'),
-               (SELECT COUNT(*) FROM tasks task
-                WHERE task.assignee=agent.agent_id AND task.status='buffered')
-             FROM agents agent ORDER BY agent.agent_id",
-        )
-        .fetch_all(&self.pool)
-        .await?;
-        let agents: Vec<_> = agents
-            .into_iter()
-            .map(|(id, status, topic, pending, buffered)| {
-                json!({
-                    "id": id,
-                    "status": status,
-                    "current_topic": topic,
-                    "pending": pending,
-                    "buffered": buffered
-                })
-            })
-            .collect();
-        let roots: Vec<(String, String, String)> = sqlx::query_as(
-            "SELECT id,status,body FROM tasks
-             WHERE kind='root' AND parent_id IS NULL AND id<>?
-             AND status IN ('pending','claimed','waiting','deferred','backlog')
-             ORDER BY created_at LIMIT 12",
-        )
-        .bind(&task.id)
-        .fetch_all(&self.pool)
-        .await?;
-        let roots: Vec<_> = roots
-            .into_iter()
-            .map(|(id, status, body)| {
-                json!({ "id": id, "status": status, "body": truncate(&body, 240) })
-            })
-            .collect();
+        let agents = self.team_snapshot().await?;
+        let roots = self.active_roots_snapshot(Some(&task.id)).await?;
         Ok(json!({
             "team": agents,
             "other_active_roots": roots,
@@ -188,14 +153,6 @@ impl Store {
     }
 }
 
-fn truncate(value: &str, limit: usize) -> String {
-    let mut output: String = value.chars().take(limit).collect();
-    if value.chars().count() > limit {
-        output.push_str("...");
-    }
-    output
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::Value;
@@ -280,6 +237,7 @@ mod tests {
             leader: "lead".into(),
             leader_task_limit: 3,
             idea_agents: Vec::new(),
+            delegate_agents: Vec::new(),
         }
     }
 }

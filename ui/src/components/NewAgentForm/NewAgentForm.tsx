@@ -5,31 +5,52 @@ import { FieldMessage, FormField, Input, Select, Textarea } from "@/components/F
 
 import { useRef, useState } from "react";
 import { Plus } from "lucide-react";
-import type { ModelSettings } from "@/lib/types";
+import type { Agent, ModelSettings } from "@/lib/types";
 import styles from "./NewAgentForm.module.css";
 
-export interface AgentDraft { name: string; description: string; prompt: string; model?: string; }
+export interface AgentDraft { name: string; description: string; prompt: string; model?: string; replicaOf?: string; }
 
-export function NewAgentForm({ first, settings, settingsError, onCreate, onCancel }: { first: boolean; settings?: ModelSettings; settingsError?: string; onCreate: (draft: AgentDraft) => Promise<void>; onCancel: () => void }) {
+export function NewAgentForm({ first, agents, settings, settingsError, onCreate, onCancel }: { first: boolean; agents?: Agent[]; settings?: ModelSettings; settingsError?: string; onCreate: (draft: AgentDraft) => Promise<void>; onCancel: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState("");
+  const [replicaOf, setReplicaOf] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const catalogError = settings?.catalog.status === "error" ? settings.catalog : undefined;
+  const replicaCandidates = (agents || []).filter((agent) => agent.kind !== "local");
   const valid = Boolean(name.trim() && description.trim() && prompt.trim() && settings && !settingsError && (!model || settings.catalog.status === "ready"));
+
+  function chooseReplicaOf(sourceId: string) {
+    setReplicaOf(sourceId);
+    const source = replicaCandidates.find((agent) => agent.id === sourceId);
+    if (!source) return;
+    const siblings = replicaCandidates.filter((agent) => agent.id === source.id || agent.sourceAgentId === (source.sourceAgentId || source.id));
+    const nextOrdinal = Math.max(0, ...siblings.map((agent) => agent.instanceOrdinal || 0)) + 1;
+    setName(`${source.id}-${nextOrdinal}`);
+    setDescription(source.role || "");
+    setPrompt(source.prompt || "");
+  }
+
   async function create() {
     if (!valid || savingRef.current) return;
     savingRef.current = true;
     setSaving(true); setError("");
-    try { await onCreate({ name, description, prompt, model: model || undefined }); }
+    try { await onCreate({ name, description, prompt, model: model || undefined, replicaOf: replicaOf || undefined }); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Agent creation failed"); }
     finally { savingRef.current = false; setSaving(false); }
   }
   return <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void create(); }}>
     {first && <p>The first agent becomes project lead.</p>}
+    {!first && replicaCandidates.length > 0 && <FormField label="Replica of" description="Runs the same role in parallel. New root work is routed to whichever pool member is idlest instead of always the same agent.">
+      <Select value={replicaOf} onChange={(event) => chooseReplicaOf(event.target.value)}>
+        <option value="">None — independent agent</option>
+        {replicaCandidates.map((agent) => <option key={agent.id} value={agent.id}>{agent.title || agent.id}</option>)}
+      </Select>
+    </FormField>}
+    {replicaOf && <FieldMessage tone="status">Name, role, and instructions were copied from the source agent. Update anything that should differ for this replica, such as a separate workspace path.</FieldMessage>}
     <FormField label="Name" required><Input data-modal-autofocus value={name} onChange={(event) => setName(event.target.value)} /></FormField>
     <FormField label="Role" required><Input value={description} onChange={(event) => setDescription(event.target.value)} /></FormField>
     <FormField label="Instructions" required description="Responsibilities, constraints, and definition of done."><Textarea rows={6} value={prompt} onChange={(event) => setPrompt(event.target.value)} /></FormField>

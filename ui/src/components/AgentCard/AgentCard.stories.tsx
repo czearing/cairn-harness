@@ -15,6 +15,7 @@ const baseArgs: AgentCardSurfaceProps = {
   initials: "PD",
   status: "idle",
   color: "#a78bfa",
+  capability: { label: "Status only", detail: "Can check team status, but cannot delegate or message other agents." },
   primaryLabel: "Open conversation with Product designer",
   settingsLabel: "Configure Product designer",
   ...actions,
@@ -43,9 +44,8 @@ export const Leader: Story = {
     initials: "DL",
     status: "working",
     color: "#f6c453",
-    avatarBadge: <Crown size={11} aria-hidden="true" />,
-    avatarBadgeLabel: "Project leader",
-    avatarBadgeTone: "warning",
+    avatarBadges: [{ icon: <Crown size={11} aria-hidden="true" />, label: "Project leader", placement: "top", tone: "warning" }],
+    capability: { label: "Delegates work", detail: "Can delegate tasks and message any agent directly." },
     primaryLabel: "Open conversation with Delivery lead",
     settingsLabel: "Configure Delivery lead",
   },
@@ -57,9 +57,26 @@ export const IdeaAgent: Story = {
     title: "Opportunity scout",
     initials: "OS",
     color: "#34d399",
-    avatarBadge: <Sparkles size={11} aria-hidden="true" />,
-    avatarBadgeLabel: "Idea agent",
-    avatarBadgePlacement: "bottom",
+    avatarBadges: [{ icon: <Sparkles size={11} aria-hidden="true" />, label: "Idea agent", placement: "bottom", tone: "info" }],
+    capability: { label: "Files new work", detail: "Can create new tasks, but never contacts other agents." },
+  },
+};
+
+export const LeaderAndIdeaAgent: Story = {
+  args: {
+    agentId: "idea-generator",
+    variant: "leader",
+    title: "Idea generator",
+    initials: "IG",
+    status: "working",
+    color: "#f6c453",
+    avatarBadges: [
+      { icon: <Crown size={11} aria-hidden="true" />, label: "Project leader", placement: "top", tone: "warning" },
+      { icon: <Sparkles size={11} aria-hidden="true" />, label: "Idea agent", placement: "bottom", tone: "info" },
+    ],
+    capability: { label: "Delegates work", detail: "Can delegate tasks and message any agent directly." },
+    primaryLabel: "Open conversation with Idea generator",
+    settingsLabel: "Configure Idea generator",
   },
 };
 

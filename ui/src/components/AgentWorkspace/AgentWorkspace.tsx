@@ -33,7 +33,10 @@ export const AgentWorkspace = forwardRef<AgentWorkspaceHandle, AgentWorkspacePro
         </Button>
         <div className={styles.identity}>
           <div>
-            <span className={styles.sourceBadge}>{agent.isLeader ? "Project lead" : "Agent"}</span>
+            <span className={styles.sourceBadge}>{[
+              agent.isLeader && "Project lead",
+              agent.isIdeaAgent && "Idea agent",
+            ].filter(Boolean).join(" · ") || "Agent"}</span>
             <h1 id="agent-workspace-title" ref={heading} tabIndex={-1}>{agent.title || agent.id}</h1>
             <p>{agent.role}</p>
           </div>

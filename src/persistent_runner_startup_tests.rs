@@ -327,5 +327,6 @@ fn worker(id: &str) -> WorkerSpec {
         leader: String::new(),
         leader_task_limit: 3,
         idea_agents: Vec::new(),
+        delegate_agents: Vec::new(),
     }
 }

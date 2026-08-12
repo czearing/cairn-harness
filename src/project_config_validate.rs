@@ -16,6 +16,7 @@ impl ProjectConfig {
             if self.leader.is_some()
                 || self.leader_task_limit.is_some()
                 || !self.idea_agents.is_empty()
+                || !self.delegate_agents.is_empty()
                 || self.producer.is_some()
                 || self.producer_limit.is_some()
                 || self.producer_prompt.is_some()
@@ -45,11 +46,25 @@ impl ProjectConfig {
                 .iter()
                 .find(|role| role.name == idea.agent)
                 .context("idea agent must name a configured role")?;
-            if !self.idea_agents.is_empty() && idea.agent == self.leader() {
-                bail!("project leader cannot also be an idea agent");
-            }
             if idea.task_limit == 0 {
                 bail!("idea agent task limit must be greater than zero");
+            }
+        }
+        let delegate_names: HashSet<_> = self
+            .delegate_agents
+            .iter()
+            .map(|agent| agent.as_str())
+            .collect();
+        if delegate_names.len() != self.delegate_agents.len() {
+            bail!("delegate agents must be unique");
+        }
+        for agent in &self.delegate_agents {
+            self.roles
+                .iter()
+                .find(|role| role.name == agent.as_str())
+                .context("delegate agent must name a configured role")?;
+            if agent.as_str() == self.leader() {
+                bail!("the project leader already delegates and cannot be listed separately");
             }
         }
         if let Some(producer) = &self.producer {

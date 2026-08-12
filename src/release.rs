@@ -325,6 +325,7 @@ mod tests {
             leader_task_limit: Some(3),
             max_active_tasks: None,
             idea_agents: Vec::new(),
+            delegate_agents: Vec::new(),
             producer: Some("producer".into()),
             producer_limit: Some(1),
             producer_prompt: Some("Create work.".into()),

@@ -14,10 +14,9 @@ export interface IdeaAgentsDraft {
 export function IdeaAgentsForm({ project, onSave, onCancel }: {
   project: Project; onSave: (draft: IdeaAgentsDraft) => Promise<void>; onCancel: () => void;
 }) {
-  const leader = project.agents.find((agent) => agent.isLeader);
-  const available = project.agents.filter((agent) => !agent.isLeader);
+  const available = project.agents;
   const [ideaAgents, setIdeaAgents] = useState<IdeaAgentsDraft["ideaAgents"]>(
-    (project.ideaAgents || []).filter((idea) => idea.agentId !== leader?.id)
+    (project.ideaAgents || [])
       .map(({ agentId, taskLimit, prompt }) => ({ agentId, taskLimit, prompt })),
   );
   const [saving, setSaving] = useState(false);
@@ -47,7 +46,7 @@ export function IdeaAgentsForm({ project, onSave, onCancel }: {
             <FormField label="Creation prompt" description="Tell this agent what useful project work to discover."><Textarea value={idea.prompt} onChange={(event) => update(agent.id, { prompt: event.target.value })} /></FormField></>}
         </div>;
       })}</fieldset>
-      {!available.length && <p>Create a non-leader agent before enabling automatic ideas.</p>}
+      {!available.length && <p>Create an agent before enabling automatic ideas.</p>}
     </section>
     {error && <FieldMessage tone="error">{error}</FieldMessage>}
     <footer><Button variant="secondary" className={styles.secondary} onClick={onCancel}>Cancel</Button><span /><Button variant="primary" disabled={saving || ideaAgents.some((idea) => idea.taskLimit < 1 || !idea.prompt.trim())} onClick={() => void save()}>{saving ? "Saving" : "Save"}</Button></footer>

@@ -108,6 +108,14 @@ impl Store {
             return Ok(());
         }
         let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        // Route the work item to whichever member of the leader's own replica pool is idlest
+        // right now (the leader itself when it has no configured replicas), instead of always
+        // pinning it to the leader by name. This reuses the same resolution the leader's own
+        // task_delegate uses, so adding or removing replicas needs no code change here.
+        let routed = self
+            .resolve_delegation_target(&mut transaction, &leader, None)
+            .await?;
+        let assignee = routed.agent_id.as_str();
         let (limit, active): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT root_task_policy.max_active_tasks,
                (SELECT COUNT(*) FROM tasks WHERE {MANUAL_LEADER_WORK_ITEM_ROOT}

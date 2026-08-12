@@ -57,6 +57,7 @@ fn add_harness_server(
                 "CAIRN_HARNESS_AGENT": worker.id,
                 "CAIRN_HARNESS_LEADER": worker.leader,
                 "CAIRN_HARNESS_IDEA_AGENTS": worker.idea_agents.join(","),
+                "CAIRN_HARNESS_DELEGATE_AGENTS": worker.delegate_agents.join(","),
                 "CAIRN_HARNESS_RUNTIME_ID": runtime_id
             },
             "tools": ["*"]

@@ -15,10 +15,13 @@ export type AgentCardVariant = "agent" | "leader";
 export interface AgentCardSurfaceProps {
   agentId: string;
   avatar?: string;
-  avatarBadge?: ReactNode;
-  avatarBadgeLabel?: string;
-  avatarBadgePlacement?: "top" | "bottom";
-  avatarBadgeTone?: "warning" | "info";
+  avatarBadges?: Array<{
+    icon: ReactNode;
+    label: string;
+    placement: "top" | "bottom";
+    tone: "warning" | "info";
+  }>;
+  capability?: { label: string; detail: string };
   color?: string;
   initials: string;
   onConfigure?: (returnFocus: HTMLElement) => void;
@@ -37,10 +40,8 @@ export interface AgentCardSurfaceProps {
 export function AgentCardSurface({
   agentId,
   avatar,
-  avatarBadge,
-  avatarBadgeLabel,
-  avatarBadgePlacement = "top",
-  avatarBadgeTone = "info",
+  avatarBadges = [],
+  capability,
   color,
   initials,
   onConfigure,
@@ -86,17 +87,21 @@ export function AgentCardSurface({
       <div className={styles.cardHeader}>
         <span className={styles.avatar} style={avatar ? { backgroundImage: `url("${avatar}")` } : undefined}>
           {!avatar && initials}
-          {avatarBadge && <span
+          {avatarBadges.map((badge) => <span
+            key={badge.placement}
             className={styles.avatarBadge}
-            data-placement={avatarBadgePlacement}
-            data-tone={avatarBadgeTone}
+            data-placement={badge.placement}
+            data-tone={badge.tone}
             role="img"
-            aria-label={avatarBadgeLabel}
-          >{avatarBadge}</span>}
+            aria-label={badge.label}
+          >{badge.icon}</span>)}
         </span>
         <div className={styles.identity}>
           <h3>{title}</h3>
-          <StatusIndicator status={status} size="compact" />
+          <div className={styles.identityMeta}>
+            <StatusIndicator status={status} size="compact" />
+            {capability && <span className={styles.capability} title={capability.detail}>{capability.label}</span>}
+          </div>
         </div>
         {renderActions
           ? renderActions(styles.configure)

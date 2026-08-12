@@ -7,14 +7,31 @@ impl Store {
         &self,
         agent: &str,
         leader: &str,
+        to: Option<&str>,
         topic: &str,
         body: &str,
     ) -> Result<String> {
         let current = self.current_assignment(agent).await?;
         self.require_agent(leader).await?;
+        // The caller (idea-generator, or the leader itself) must name the exact assignee it
+        // wants. No hidden pool auto-picking happens here: `to` is used verbatim. The only
+        // fallback is the legacy leader-initiated dashboard root, which still has no explicit
+        // target because a human typed a message rather than calling the tool directly.
+        let assignee = match to {
+            Some(explicit) => self.require_active_agent(explicit.trim()).await?,
+            None => {
+                let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+                let routed = self
+                    .resolve_delegation_target(&mut transaction, leader, None)
+                    .await?;
+                transaction.commit().await?;
+                routed.agent_id
+            }
+        };
+        let assignee = assignee.as_str();
         if current.is_dashboard_message() && agent == leader {
             return self
-                .create_root(agent, leader, topic, body, "agent", Some(&current.id))
+                .create_root(agent, assignee, topic, body, "agent", Some(&current.id))
                 .await;
         }
         if current.kind != "generator" {
@@ -24,13 +41,34 @@ impl Store {
         }
         self.create_automatic_root_once(
             agent,
-            leader,
+            assignee,
             topic,
             body,
             &current.id,
             current.source == "automatic-buffer",
         )
         .await
+    }
+
+    /// Validates an explicitly named assignee exists and can currently receive work. This is a
+    /// direct, exact lookup only: it never falls back to a role template or replica pool, so the
+    /// caller's chosen target is always who actually gets the task.
+    async fn require_active_agent(&self, agent_id: &str) -> Result<String> {
+        if agent_id.is_empty() {
+            bail!("to must not be empty");
+        }
+        let row: Option<(String, String)> =
+            sqlx::query_as("SELECT agent_id,status FROM agents WHERE agent_id=?")
+                .bind(agent_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        let Some((agent_id, status)) = row else {
+            bail!("unknown assignee {agent_id}");
+        };
+        if status == "paused" {
+            bail!("assignee {agent_id} is paused; choose an active peer");
+        }
+        Ok(agent_id)
     }
 
     pub async fn complete_current(&self, agent: &str, result: &str) -> Result<String> {
@@ -139,6 +177,7 @@ mod tests {
                 leader: "lead".into(),
                 leader_task_limit: 1,
                 idea_agents: Vec::new(),
+                delegate_agents: Vec::new(),
             })
             .await
             .unwrap();
@@ -159,11 +198,11 @@ mod tests {
         store.claim("lead").await.unwrap().unwrap();
 
         let first = store
-            .create_from_generator("lead", "lead", "validation", "Validate.")
+            .create_from_generator("lead", "lead", None, "validation", "Validate.")
             .await
             .unwrap();
         let second = store
-            .create_from_generator("lead", "lead", "validation", "Validate.")
+            .create_from_generator("lead", "lead", None, "validation", "Validate.")
             .await
             .unwrap();
 
@@ -188,6 +227,7 @@ mod tests {
                     leader: "lead".into(),
                     leader_task_limit: 1,
                     idea_agents: Vec::new(),
+                    delegate_agents: Vec::new(),
                 })
                 .await
                 .unwrap();
@@ -231,6 +271,7 @@ mod tests {
                     leader: "lead".into(),
                     leader_task_limit: 1,
                     idea_agents: Vec::new(),
+                    delegate_agents: Vec::new(),
                 })
                 .await
                 .unwrap();
@@ -283,6 +324,7 @@ mod tests {
                     leader: "lead".into(),
                     leader_task_limit: 3,
                     idea_agents: Vec::new(),
+                    delegate_agents: Vec::new(),
                 })
                 .await
                 .unwrap();
@@ -319,6 +361,7 @@ mod tests {
                     leader: "lead".into(),
                     leader_task_limit: 3,
                     idea_agents: Vec::new(),
+                    delegate_agents: Vec::new(),
                 })
                 .await
                 .unwrap();
@@ -359,6 +402,7 @@ mod tests {
                     leader: "lead".into(),
                     leader_task_limit: 3,
                     idea_agents: Vec::new(),
+                    delegate_agents: Vec::new(),
                 })
                 .await
                 .unwrap();

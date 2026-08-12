@@ -2,9 +2,18 @@ use anyhow::Result;
 
 use crate::store::Store;
 
+// Assignee matches the leader itself, or any agent replicating the leader's role template, so
+// the shared capacity limit stays correct however many replicas the leader currently has (zero
+// or more) instead of only counting the literal leader name.
 pub(crate) const MANUAL_LEADER_WORK_ITEM_ROOT: &str = "kind='root' AND source='manual'
     AND parent_id IS NULL AND topic='work-item'
-    AND assignee=(SELECT leader FROM root_task_policy WHERE singleton=1)";
+    AND assignee IN (
+        SELECT (SELECT leader FROM root_task_policy WHERE singleton=1)
+        UNION
+        SELECT agent_id FROM agent_replica_profiles
+        WHERE replica_eligible=1
+          AND role_template=(SELECT leader FROM root_task_policy WHERE singleton=1)
+    )";
 
 impl Store {
     pub async fn set_max_active_tasks(&self, limit: Option<u64>, leader: &str) -> Result<()> {

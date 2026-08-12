@@ -19,7 +19,7 @@ export function NewAgentDialog({ open, project, settings, settingsError, onCreat
   open: boolean; project?: Project; settings?: ModelSettings; settingsError?: string; onCreate: (draft: AgentDraft) => Promise<void>; onClose: () => void;
 }) {
   return <Modal title="New agent" open={open} onClose={onClose}>
-    {project && <NewAgentForm first={!project.agents.length} settings={settings} settingsError={settingsError} onCancel={onClose} onCreate={onCreate} />}
+    {project && <NewAgentForm first={!project.agents.length} agents={project.agents} settings={settings} settingsError={settingsError} onCancel={onClose} onCreate={onCreate} />}
   </Modal>;
 }
 

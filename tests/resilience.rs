@@ -94,12 +94,12 @@ async fn one_generator_cannot_create_multiple_roots() {
     store.create_generator("pm", "create work").await.unwrap();
     store.claim("pm").await.unwrap().unwrap();
     store
-        .create_from_generator("pm", "pm", "first", "first body")
+        .create_from_generator("pm", "pm", None, "first", "first body")
         .await
         .unwrap();
 
     let error = store
-        .create_from_generator("pm", "pm", "second", "second body")
+        .create_from_generator("pm", "pm", None, "second", "second body")
         .await
         .unwrap_err();
 

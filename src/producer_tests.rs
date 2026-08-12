@@ -36,7 +36,7 @@ async fn failed_automatic_root_is_blocked_during_cooldown_but_distinct_work_is_a
         .await
         .unwrap();
     let error = store
-        .create_from_generator("producer", "leader", "repeated", "Same body.")
+        .create_from_generator("producer", "leader", None, "repeated", "Same body.")
         .await
         .unwrap_err();
     assert!(error.to_string().contains("retry cooldown after failed"));
@@ -45,7 +45,7 @@ async fn failed_automatic_root_is_blocked_during_cooldown_but_distinct_work_is_a
         .await
         .unwrap();
     store
-        .create_from_generator("producer", "leader", "distinct", "Different body.")
+        .create_from_generator("producer", "leader", None, "distinct", "Different body.")
         .await
         .unwrap();
 }
@@ -63,12 +63,12 @@ async fn cancelled_automatic_root_is_blocked_during_cooldown_but_distinct_work_i
         .await
         .unwrap();
     let error = store
-        .create_from_generator("producer", "leader", "repeated", "Same body.")
+        .create_from_generator("producer", "leader", None, "repeated", "Same body.")
         .await
         .unwrap_err();
     assert!(error.to_string().contains("retry cooldown after cancelled"));
     store
-        .create_from_generator("producer", "leader", "distinct", "Different body.")
+        .create_from_generator("producer", "leader", None, "distinct", "Different body.")
         .await
         .unwrap();
 }
@@ -88,7 +88,7 @@ async fn equivalent_automatic_root_can_return_once_after_cooldown() {
     assert!(harness.replenish().await.unwrap());
     store.claim("producer").await.unwrap().unwrap();
     let retried = store
-        .create_from_generator("producer", "leader", "repeated", "Same body.")
+        .create_from_generator("producer", "leader", None, "repeated", "Same body.")
         .await
         .unwrap();
     store.complete_current("producer", "created").await.unwrap();
@@ -253,7 +253,7 @@ async fn multiple_idea_agents_pause_independently_at_their_task_limits() {
     let generator = store.claim("ideas-a").await.unwrap().unwrap();
     assert_eq!(generator.kind, "generator");
     store
-        .create_from_generator("ideas-a", "leader", "a-one", "First A task.")
+        .create_from_generator("ideas-a", "leader", None, "a-one", "First A task.")
         .await
         .unwrap();
     store.complete_current("ideas-a", "created").await.unwrap();

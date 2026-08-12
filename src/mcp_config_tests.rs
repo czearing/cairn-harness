@@ -35,6 +35,7 @@ fn session_config_keeps_external_servers_separate_from_embedded_harness_tools() 
         leader: "author".into(),
         leader_task_limit: 3,
         idea_agents: vec!["scout".into()],
+        delegate_agents: Vec::new(),
     };
 
     let file = write(directory.path(), &worker, &config, "runtime-1").unwrap();

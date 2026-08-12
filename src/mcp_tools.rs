@@ -1,8 +1,8 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use serde_json::{Value, json};
 
 use crate::{
-    protocol::{BEGIN, parse_output},
+    mcp_tools_helpers::{optional, required, validate_completion_result},
     store::Store,
 };
 
@@ -11,6 +11,7 @@ pub(crate) async fn call(
     agent: &str,
     leader: &str,
     idea_agents: &str,
+    delegate_agents: &str,
     runtime_id: &str,
     request: &Value,
 ) -> Result<Value> {
@@ -19,7 +20,16 @@ pub(crate) async fn call(
     }
     let name = required(&request["params"], "name")?;
     let arguments = &request["params"]["arguments"];
-    invoke_with_idea_agents(store, agent, leader, idea_agents, name, arguments).await
+    invoke_with_idea_agents(
+        store,
+        agent,
+        leader,
+        idea_agents,
+        delegate_agents,
+        name,
+        arguments,
+    )
+    .await
 }
 
 pub async fn invoke(
@@ -29,7 +39,7 @@ pub async fn invoke(
     name: &str,
     arguments: &Value,
 ) -> Result<Value> {
-    invoke_with_idea_agents(store, agent, leader, "", name, arguments).await
+    invoke_with_idea_agents(store, agent, leader, "", "", name, arguments).await
 }
 
 pub async fn invoke_with_idea_agents(
@@ -37,23 +47,54 @@ pub async fn invoke_with_idea_agents(
     agent: &str,
     leader: &str,
     idea_agents: &str,
+    delegate_agents: &str,
     name: &str,
     arguments: &Value,
 ) -> Result<Value> {
+    let is_delegate = agent == leader
+        || delegate_agents
+            .split(',')
+            .any(|delegate| !delegate.is_empty() && delegate == agent);
+    if name == "team_status" {
+        let status = store.team_status().await?;
+        let structured: Value = serde_json::from_str(&status)?;
+        return Ok(json!({
+            "content":[{"type":"text","text":status}],
+            "structuredContent":structured,
+            "isError":false
+        }));
+    }
     let id = match name {
         "task_create" => {
+            if agent != leader
+                && !idea_agents
+                    .split(',')
+                    .any(|idea| !idea.is_empty() && idea == agent)
+            {
+                bail!("task_create is only available to the project leader or an idea agent");
+            }
+            let to = optional(arguments, "to");
+            if let Some(assignee) = to {
+                if idea_agents
+                    .split(',')
+                    .any(|idea| !idea.is_empty() && assignee == idea)
+                {
+                    bail!("idea agents cannot receive delegated tasks");
+                }
+            }
             store
                 .create_from_generator(
                     agent,
                     leader,
+                    to,
                     required(arguments, "topic")?,
                     required(arguments, "body")?,
                 )
                 .await?
         }
         "task_delegate" => {
-            if agent != leader {
-                bail!("task_delegate is only available to the project leader");
+            if !is_delegate {
+                bail!("task_delegate is only available to the project leader or an agent granted delegation capability");
             }
             let assignee = required(arguments, "to")?;
             if idea_agents
@@ -78,6 +119,9 @@ pub async fn invoke_with_idea_agents(
             store.complete_current(agent, result).await?
         }
         "message_send" => {
+            if !is_delegate {
+                bail!("message_send is only available to the project leader or an agent granted delegation capability");
+            }
             store
                 .send_peer_message(
                     agent,
@@ -96,45 +140,6 @@ pub async fn invoke_with_idea_agents(
     }))
 }
 
-pub(crate) fn validate_completion_result(result: &str) -> Result<()> {
-    if !result.contains(BEGIN) {
-        if declares_incomplete_work(result) {
-            bail!("task completion rejected: result declares incomplete work");
-        }
-        return Ok(());
-    }
-    let output = parse_output(result).context("invalid task completion result")?;
-    if !output.complete {
-        bail!("task completion rejected: result declares complete=false");
-    }
-    let evidence = format!(
-        "{}\n{}",
-        output.summary,
-        output.deliverable.as_deref().unwrap_or_default()
-    );
-    if declares_incomplete_work(&evidence) {
-        bail!("task completion rejected: result declares incomplete work");
-    }
-    Ok(())
-}
-
-fn declares_incomplete_work(result: &str) -> bool {
-    let normalized = result.trim().to_ascii_lowercase();
-    [
-        "blocked:",
-        "incomplete:",
-        "not completed:",
-        "no implementation was accepted",
-        "no implementation was completed",
-        "implementation is still required",
-        "work was not completed",
-        "could not complete",
-        "unable to complete",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
-}
-
 pub async fn invoke_with_producer(
     store: &Store,
     agent: &str,
@@ -143,19 +148,5 @@ pub async fn invoke_with_producer(
     name: &str,
     arguments: &Value,
 ) -> Result<Value> {
-    invoke_with_idea_agents(store, agent, leader, producer, name, arguments).await
-}
-
-fn required<'a>(value: &'a Value, name: &str) -> Result<&'a str> {
-    value[name]
-        .as_str()
-        .filter(|text| !text.trim().is_empty())
-        .with_context(|| format!("{name} is required"))
-}
-
-fn optional<'a>(value: &'a Value, name: &str) -> Option<&'a str> {
-    value[name]
-        .as_str()
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
+    invoke_with_idea_agents(store, agent, leader, producer, "", name, arguments).await
 }

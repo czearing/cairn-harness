@@ -7,7 +7,7 @@ import { getProjectConfigPath, getProjectRuntime, getProjects } from "./projects
 import { notifyProjectRegistryChanged } from "./project-registry";
 import { removeProjectStateAndRegistration } from "./project-removal";
 import { supervisorEnabled, supervisorRestartDelayMs } from "./supervisor-policy";
-import { createCachedWorkerProcessResolver, ownsWorkerProcess, readProcessIdentity, withOwnedWorker, type ProcessIdentity, type WorkerRecord } from "./worker-process-identity";
+import { createCachedWorkerProcessResolver, findRunningWorkerProcess, ownsWorkerProcess, readProcessIdentity, withOwnedWorker, type ProcessIdentity, type WorkerRecord } from "./worker-process-identity";
 import { globalSettingsPath } from "./global-settings";
 import { setProjectState, setProjectStateInDatabase } from "./project-state";
 import { ensureWorkspaceStateDirectory } from "./workspace-state";
@@ -41,9 +41,25 @@ export function ensureProjectRunning(projectId: string) {
     return true;
   }
   rmSync(recordPath, { force: true });
+  const logPath = path.join(project.root, ".cairn-harness", "worker.log");
+  const running = findRunningWorkerProcess(config);
+  if (running) {
+    // Reconciliation must stay idempotent even when the tracking record is
+    // missing or stale (for example after a manual restart): adopt an
+    // already-running watch process instead of spawning a second one for
+    // the same project, which would race the original to claim tasks.
+    const adopted = {
+      pid: running.pid,
+      config,
+      startedAt: running.process.start,
+      log: logPath,
+      process: running.process,
+    } satisfies WorkerRecord;
+    writeFileSync(recordPath, JSON.stringify(adopted));
+    return true;
+  }
   const invocation = harnessInvocation(config);
   ensureWorkspaceStateDirectory(project.root);
-  const logPath = path.join(project.root, ".cairn-harness", "worker.log");
   rotateLog(logPath);
   const log = openSync(logPath, "a");
   let identity: ProcessIdentity | null = null;

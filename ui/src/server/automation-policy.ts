@@ -24,7 +24,6 @@ export function applyAutomationConfig(config: AutomationConfig, settings: Automa
   for (const idea of settings.ideaAgents) {
     if (!roles.has(idea.agentId)) throw new Error("Idea agent not found");
     if (seen.has(idea.agentId)) throw new Error("Idea agents must be unique");
-    if (idea.agentId === config.leader) throw new Error("Project leader cannot also be an idea agent");
     if (!Number.isInteger(idea.taskLimit) || idea.taskLimit < 1) throw new Error("Idea agent task limit must be at least one");
     seen.add(idea.agentId);
   }

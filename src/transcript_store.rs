@@ -182,6 +182,7 @@ mod tests {
             leader: "lead".into(),
             leader_task_limit: 1,
             idea_agents: Vec::new(),
+            delegate_agents: Vec::new(),
         }
     }
 

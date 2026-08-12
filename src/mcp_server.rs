@@ -13,6 +13,7 @@ pub async fn run() -> Result<()> {
     let agent = env::var("CAIRN_HARNESS_AGENT").context("missing harness agent")?;
     let leader = env::var("CAIRN_HARNESS_LEADER").context("missing harness leader")?;
     let idea_agents = env::var("CAIRN_HARNESS_IDEA_AGENTS").unwrap_or_default();
+    let delegate_agents = env::var("CAIRN_HARNESS_DELEGATE_AGENTS").unwrap_or_default();
     let runtime_id =
         env::var("CAIRN_HARNESS_RUNTIME_ID").context("missing harness runtime identity")?;
     let store = Store::open(&database).await?;
@@ -27,11 +28,20 @@ pub async fn run() -> Result<()> {
             Some("initialize") => initialize(&request),
             Some("tools/list") => {
                 mark_ready()?;
-                tools()
+                tools(&agent, &leader, &idea_agents, &delegate_agents)
             }
 
             Some("tools/call") => {
-                call(&store, &agent, &leader, &idea_agents, &runtime_id, &request).await
+                call(
+                    &store,
+                    &agent,
+                    &leader,
+                    &idea_agents,
+                    &delegate_agents,
+                    &runtime_id,
+                    &request,
+                )
+                .await
             }
             _ => Err(anyhow::anyhow!("unsupported method")),
         };
@@ -57,11 +67,21 @@ pub async fn invoke_from_environment(name: &str, arguments: Value) -> Result<Val
     let agent = env::var("CAIRN_HARNESS_AGENT").context("missing harness agent")?;
     let leader = env::var("CAIRN_HARNESS_LEADER").context("missing harness leader")?;
     let idea_agents = env::var("CAIRN_HARNESS_IDEA_AGENTS").unwrap_or_default();
+    let delegate_agents = env::var("CAIRN_HARNESS_DELEGATE_AGENTS").unwrap_or_default();
     let runtime_id =
         env::var("CAIRN_HARNESS_RUNTIME_ID").context("missing harness runtime identity")?;
     let store = Store::open(&database).await?;
     let request = json!({"params":{"name":name,"arguments":arguments}});
-    call(&store, &agent, &leader, &idea_agents, &runtime_id, &request).await
+    call(
+        &store,
+        &agent,
+        &leader,
+        &idea_agents,
+        &delegate_agents,
+        &runtime_id,
+        &request,
+    )
+    .await
 }
 
 fn mark_ready() -> Result<()> {
@@ -85,16 +105,33 @@ fn initialize(request: &Value) -> Result<Value> {
     }))
 }
 
-fn tools() -> Result<Value> {
-    Ok(json!({"tools":[
-        tool("task_create", "Create durable work when the dashboard user asks, or create the next automatic root task.", json!({
+/// The tool list is scoped per agent identity so that non-leader workers
+/// never see delegation or messaging tools in `tools/list`: they aren't
+/// just blocked at call time, they have no visibility that the capability
+/// exists at all. `team_status` is the one exception: every agent, leader
+/// or worker, can call it to check what the rest of the team is doing.
+fn tools(agent: &str, leader: &str, idea_agents: &str, delegate_agents: &str) -> Result<Value> {
+    let is_leader = agent == leader;
+    let is_idea_agent = idea_agents
+        .split(',')
+        .any(|idea| !idea.is_empty() && idea == agent);
+    let is_delegate = is_leader
+        || delegate_agents
+            .split(',')
+            .any(|delegate| !delegate.is_empty() && delegate == agent);
+    let mut list = Vec::new();
+    if is_leader || is_idea_agent {
+        list.push(tool("task_create", "Create durable work when the dashboard user asks, or create the next automatic root task. Always set 'to' to the exact peer agent id (see your Peers list) that should receive this work; you are the delegator and must choose explicitly.", json!({
             "type":"object","additionalProperties":false,
             "properties":{
+                "to":{"type":"string"},
                 "topic":{"type":"string"},
                 "body":{"type":"string"}
-            },"required":["topic","body"]
-        })),
-        tool("task_delegate", "Delegate one distinct, role-matched subtask; never pass on or duplicate your assignment.", json!({
+            },"required":["to","topic","body"]
+        })));
+    }
+    if is_delegate {
+        list.push(tool("task_delegate", "Delegate one distinct, role-matched subtask; never pass on or duplicate your assignment.", json!({
             "type":"object","additionalProperties":false,
             "properties":{
                 "to":{"type":"string"},
@@ -102,16 +139,21 @@ fn tools() -> Result<Value> {
                 "topic":{"type":"string"},
                 "body":{"type":"string"}
             },"required":["to","topic","body"]
-        })),
-        tool("message_send", "Send a necessary direct peer request or new information; no acknowledgements or result relays.", json!({
+        })));
+        list.push(tool("message_send", "Send a necessary direct peer request or new information; no acknowledgements or result relays.", json!({
             "type":"object","additionalProperties":false,
             "properties":{
                 "to":{"type":"string"},
                 "topic":{"type":"string"},
                 "body":{"type":"string"}
             },"required":["to","topic","body"]
-        }))
-    ]}))
+        })));
+    }
+    list.push(tool("team_status", "Check the current status of every agent on the team (idle/working, current topic, pending and buffered task counts) and any other active root tasks. Read-only; does not notify or contact anyone.", json!({
+        "type":"object","additionalProperties":false,
+        "properties":{}
+    })));
+    Ok(json!({ "tools": list }))
 }
 
 fn tool(name: &str, description: &str, input: Value) -> Value {
@@ -123,7 +165,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::{mcp_tools::validate_completion_result, models::WorkerSpec, protocol::BEGIN};
+    use crate::{mcp_tools_helpers::validate_completion_result, models::WorkerSpec, protocol::BEGIN};
 
     #[test]
     fn tool_listing_marks_the_server_ready() {
@@ -137,7 +179,7 @@ mod tests {
 
     #[test]
     fn task_delegate_schema_accepts_an_optional_capability() {
-        let tools = tools().unwrap();
+        let tools = tools("leader", "leader", "", "").unwrap();
         let delegation = tools["tools"]
             .as_array()
             .unwrap()
@@ -159,7 +201,7 @@ mod tests {
 
     #[test]
     fn task_complete_is_not_agent_visible() {
-        let tools = tools().unwrap();
+        let tools = tools("leader", "leader", "", "").unwrap();
         assert!(
             !tools["tools"]
                 .as_array()
@@ -167,6 +209,72 @@ mod tests {
                 .iter()
                 .any(|tool| tool["name"] == "task_complete")
         );
+    }
+
+    #[test]
+    fn workers_cannot_see_delegation_or_messaging_tools() {
+        let tools = tools("implementer", "leader", "", "").unwrap();
+        let names: Vec<_> = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+
+        assert_eq!(names, vec!["team_status"]);
+    }
+
+    #[test]
+    fn idea_agents_can_create_work_but_not_delegate_or_message() {
+        let tools = tools("idea-generator", "leader", "idea-generator", "").unwrap();
+        let names: Vec<_> = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+
+        assert_eq!(names, vec!["task_create", "team_status"]);
+    }
+
+    #[test]
+    fn delegate_agents_can_delegate_and_message_without_being_leader() {
+        let tools = tools("implementer", "leader", "", "implementer").unwrap();
+        let names: Vec<_> = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+
+        assert_eq!(names, vec!["task_delegate", "message_send", "team_status"]);
+    }
+
+    #[test]
+    fn agents_outside_the_delegate_list_still_cannot_delegate_or_message() {
+        let tools = tools("implementer-2", "leader", "", "implementer").unwrap();
+        let names: Vec<_> = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+
+        assert_eq!(names, vec!["team_status"]);
+    }
+
+    #[test]
+    fn every_agent_can_see_team_status() {
+        for (agent, leader) in [("leader", "leader"), ("implementer", "leader")] {
+            let tools = tools(agent, leader, "", "").unwrap();
+            assert!(
+                tools["tools"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|tool| tool["name"] == "team_status")
+            );
+        }
     }
 
     #[test]
@@ -228,6 +336,7 @@ mod tests {
                 leader: "leader".into(),
                 leader_task_limit: 1,
                 idea_agents: Vec::new(),
+                delegate_agents: Vec::new(),
             })
             .await
             .unwrap();
@@ -271,6 +380,7 @@ mod tests {
                 leader: "leader".into(),
                 leader_task_limit: 1,
                 idea_agents: Vec::new(),
+                delegate_agents: Vec::new(),
             })
             .await
             .unwrap();
@@ -279,7 +389,7 @@ mod tests {
             "params": {"name": "unknown", "arguments": {}}
         });
 
-        let error = call(&store, "leader", "leader", "", "stale", &request)
+        let error = call(&store, "leader", "leader", "", "", "stale", &request)
             .await
             .unwrap_err();
 
@@ -302,6 +412,7 @@ mod tests {
                 leader: "leader".into(),
                 leader_task_limit: 1,
                 idea_agents: Vec::new(),
+                delegate_agents: Vec::new(),
             })
             .await
             .unwrap();
@@ -310,7 +421,7 @@ mod tests {
             "params": {"name": "unknown", "arguments": {}}
         });
 
-        let error = call(&store, "leader", "leader", "", "current", &request)
+        let error = call(&store, "leader", "leader", "", "", "current", &request)
             .await
             .unwrap_err();
 
