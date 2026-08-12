@@ -14,6 +14,8 @@ test("valid agent PATCH actions map only to their explicit mutations", async () 
     ["pause", [`pause:${projectId}:${agentId}`]],
     ["resume", [`resume:${projectId}:${agentId}`]],
     ["clear-context", [`clear:${projectId}:${agentId}`]],
+    ["grant-delegate", [`delegate:${projectId}:${agentId}:true`, `restart:${projectId}`]],
+    ["revoke-delegate", [`delegate:${projectId}:${agentId}:false`, `restart:${projectId}`]],
   ];
 
   for (const [action, expectedCalls] of cases) {
@@ -77,6 +79,7 @@ function dependencies(calls, assertCapability) {
     pauseAgent: (project, agent) => calls.push(`pause:${project}:${agent}`),
     resumeAgent: (project, agent) => calls.push(`resume:${project}:${agent}`),
     clearAgentContext: (project, agent) => calls.push(`clear:${project}:${agent}`),
+    setAgentDelegate: (project, agent, canDelegate) => calls.push(`delegate:${project}:${agent}:${canDelegate}`),
     scheduleRestart: (project) => calls.push(`restart:${project}`),
     assertCapability,
   };

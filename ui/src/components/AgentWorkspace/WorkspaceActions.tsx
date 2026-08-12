@@ -8,7 +8,7 @@ import type { AgentDeletionPreview } from "./agent-workspace-types";
 import { agentDeletionBlockers, agentDeletionConsequence } from "./deletion-messages";
 import styles from "./AgentWorkspace.module.css";
 
-type Action = "leader" | "pause" | "reset" | "delete";
+type Action = "leader" | "pause" | "reset" | "delete" | "delegate";
 
 export function AgentRuntimeActions({
   agent,
@@ -18,6 +18,7 @@ export function AgentRuntimeActions({
   onReset,
   onDelete,
   onDeletionPreview,
+  onDelegateToggle,
 }: {
   agent: Agent;
   disabled?: boolean;
@@ -26,6 +27,7 @@ export function AgentRuntimeActions({
   onReset: () => Promise<void>;
   onDelete: () => Promise<void>;
   onDeletionPreview: () => Promise<AgentDeletionPreview>;
+  onDelegateToggle?: () => Promise<void>;
 }) {
   const active = useRef<Action | undefined>(undefined);
   const [pending, setPending] = useState<Action>();
@@ -83,6 +85,9 @@ export function AgentRuntimeActions({
       <div className={styles.actionRow}>
         {!agent.isLeader && onMakeLeader && <Button variant="secondary" type="button" disabled={disabled || Boolean(pending)} onClick={() => void run("leader", onMakeLeader)}>
           {pending === "leader" ? "Making project lead" : "Make project lead"}
+        </Button>}
+        {!agent.isLeader && agent.capabilities?.delegate !== false && onDelegateToggle && <Button variant="secondary" type="button" disabled={disabled || Boolean(pending)} onClick={() => void run("delegate", onDelegateToggle)}>
+          {pending === "delegate" ? "Updating delegation" : agent.isDelegate ? "Revoke delegation" : "Grant delegation"}
         </Button>}
         <Button variant="secondary" type="button" disabled={disabled || Boolean(pending)} onClick={() => void run("pause", onPauseToggle)}>
           {pending === "pause" ? "Updating status" : agent.status === "paused" ? "Resume agent" : "Pause agent"}

@@ -28,6 +28,7 @@ export interface AgentCapabilityMatrix {
   reset: boolean;
   delete: boolean;
   promote: boolean;
+  delegate: boolean;
 }
 export interface AgentDeletionOperation {
   id: string;
@@ -116,6 +117,7 @@ export function agentCapabilityMatrix(projectId: string, agentId: string): Agent
     reset: Boolean(sourceExists),
     delete: Boolean(sourceExists),
     promote: role.agent_kind !== "local" && config.leader !== role.name,
+    delegate: role.agent_kind !== "local" && config.leader !== role.name,
   };
 }
 
@@ -573,6 +575,19 @@ export function setProjectLeader(projectId: string, agentId: string) {
   config.leader = agentId;
   config.idea_agents = config.idea_agents?.filter((idea) => idea.agent !== agentId);
   if (config.producer === agentId) delete config.producer;
+  writeProjectConfig(configPath, config);
+}
+
+export function setAgentDelegate(projectId: string, agentId: string, canDelegate: boolean) {
+  const configPath = getProjectConfigPath(projectId);
+  if (!configPath) throw new Error("Project config not found");
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as { leader?: string; delegate_agents?: string[]; roles?: Role[] };
+  if (!(config.roles || []).some((role) => role.name === agentId)) throw new Error("Agent not found");
+  if (config.leader === agentId) throw new Error("The project leader already delegates and cannot be listed separately.");
+  const current = new Set(config.delegate_agents || []);
+  if (canDelegate) current.add(agentId);
+  else current.delete(agentId);
+  config.delegate_agents = [...current];
   writeProjectConfig(configPath, config);
 }
 

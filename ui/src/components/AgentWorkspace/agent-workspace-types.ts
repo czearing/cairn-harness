@@ -28,6 +28,7 @@ export interface AgentWorkspaceProps {
   onReset: () => Promise<void>;
   onDelete: () => Promise<void>;
   onDeletionPreview: () => Promise<AgentDeletionPreview>;
+  onDelegateToggle: () => Promise<void>;
 }
 
 export interface AgentWorkspaceHandle {

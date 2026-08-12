@@ -21,6 +21,7 @@ interface Config {
   name: string; root: string; leader?: string; leader_task_limit?: number; max_active_tasks?: number;
   configuration_revision?: number;
   idea_agents?: { agent: string; task_limit: number; prompt: string }[];
+  delegate_agents?: string[];
   producer?: string; producer_limit?: number; producer_prompt?: string;
   work_dir?: string; roles: { name: string; title?: string; agent_kind?: "source" | "local"; source_agent?: string; instance_ordinal?: number; template?: string; capabilities?: string[]; replica_eligible?: boolean; description: string; prompt: string; model?: string; appearance?: { color?: string; avatar?: string } }[];
   copilot?: { model?: string; [key: string]: unknown };
@@ -113,12 +114,13 @@ function readProjectRegistration(configPath: string): ProjectRegistration {
   const leader = config.leader || config.roles[0]?.name;
   const ideaAgents = ideaAgentConfig(config);
   const ideaIds = new Set(ideaAgents.map((idea) => idea.agentId));
+  const delegateIds = new Set(config.delegate_agents || []);
   const base: Project = {
     id, name: config.name, root, workDir: config.work_dir, paused,
     leaderTaskLimit: config.leader_task_limit || 3, maxActiveTasks: config.max_active_tasks,
     delegatedTaskCount: 0, backlogTaskCount: 0, ideaAgents,
     agents: config.roles.map((role) => ({
-      ...roleAgent(role, leader, ideaIds, config.configuration_revision || 0),
+      ...roleAgent(role, leader, ideaIds, delegateIds, config.configuration_revision || 0),
       ...replicaMetadata(config.roles, role),
     })).sort(leaderFirst), workItems: [], delegatedActions: [],
     activity: [], releases: 0, workItemCount: 0, activeWorkCount: 0,
@@ -149,6 +151,7 @@ function readProject({ config, root, id, paused, base }: ProjectRegistration, op
         AND status IN ('pending','claimed','waiting','deferred','buffered','backlog')`, idea.agentId),
     }));
     const ideaIds = new Set(ideaAgents.map((idea) => idea.agentId));
+    const delegateIds = new Set(config.delegate_agents || []);
     const agents = config.roles
       .map((role) => runtimeAgents.has(role.name)
         ? {
@@ -157,7 +160,7 @@ function readProject({ config, root, id, paused, base }: ProjectRegistration, op
             role: role.description,
             configurationRevision: config.configuration_revision || 0,
           }
-        : roleAgent(role, leader, ideaIds, config.configuration_revision || 0))
+        : roleAgent(role, leader, ideaIds, delegateIds, config.configuration_revision || 0))
       .map((agent) => {
         const role = config.roles.find((candidate) => candidate.name === agent.id);
         const sourceRole = role?.agent_kind === "local"
@@ -174,6 +177,7 @@ function readProject({ config, root, id, paused, base }: ProjectRegistration, op
           configurationRevision: config.configuration_revision || 0,
           isLeader: agent.id === leader,
           isIdeaAgent: ideaIds.has(agent.id),
+          isDelegate: delegateIds.has(agent.id),
         }, latest, activityFor);
       })
       .map((agent) => paused ? { ...agent, status: "paused" as const, topic: undefined } : agent)
@@ -232,6 +236,7 @@ function replicaMetadata(roles: Config["roles"], role: Config["roles"][number]) 
       reset: sourceExists,
       delete: sourceExists,
       promote: kind !== "local",
+      delegate: kind !== "local",
     },
   };
 }
@@ -263,8 +268,8 @@ function readContent(root: string, relative: string) {
   if (!file.startsWith(path.resolve(root)) || !existsSync(file)) return "";
   try { return readFileSync(file, "utf8"); } catch { return ""; }
 }
-function roleAgent(role: Config["roles"][number], leader: string | undefined, ideaAgents: Set<string>, configurationRevision: number): Agent {
-  return { id: role.name, kind: role.agent_kind || "source", sourceAgentId: role.source_agent || role.name, instanceOrdinal: role.instance_ordinal || 0, configurationRevision, title: role.title || displayName(role.name), role: role.description, prompt: role.prompt, model: role.model, isLeader: role.name === leader, isIdeaAgent: ideaAgents.has(role.name), status: "idle", updatedAt: "" };
+function roleAgent(role: Config["roles"][number], leader: string | undefined, ideaAgents: Set<string>, delegateAgents: Set<string>, configurationRevision: number): Agent {
+  return { id: role.name, kind: role.agent_kind || "source", sourceAgentId: role.source_agent || role.name, instanceOrdinal: role.instance_ordinal || 0, configurationRevision, title: role.title || displayName(role.name), role: role.description, prompt: role.prompt, model: role.model, isLeader: role.name === leader, isIdeaAgent: ideaAgents.has(role.name), isDelegate: delegateAgents.has(role.name), status: "idle", updatedAt: "" };
 }
 function ideaAgentConfig(config: Config): IdeaAgent[] {
   const rolePrompt = (agentId: string) => config.roles?.find((role) => role.name === agentId)?.prompt;

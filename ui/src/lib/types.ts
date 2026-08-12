@@ -17,6 +17,7 @@ export interface Agent {
     reset: boolean;
     delete: boolean;
     promote: boolean;
+    delegate: boolean;
   };
   title?: string;
   role: string;
@@ -29,6 +30,7 @@ export interface Agent {
   model?: string;
   isLeader?: boolean;
   isIdeaAgent?: boolean;
+  isDelegate?: boolean;
 }
 
 export interface IdeaAgent {

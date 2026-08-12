@@ -310,6 +310,10 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
           await write(`/api/projects/${project.id}/agents/${configurationAgent.id}`, "PATCH", { action: "make-leader" });
           await mutate();
         }}
+        onDelegateToggle={async () => {
+          await write(`/api/projects/${project.id}/agents/${configurationAgent.id}`, "PATCH", { action: configurationAgent.isDelegate ? "revoke-delegate" : "grant-delegate" });
+          await mutate();
+        }}
         onPauseToggle={async () => {
           await write(`/api/projects/${project.id}/agents/${configurationAgent.id}`, "PATCH", { action: configurationAgent.status === "paused" ? "resume" : "pause" });
           await mutate();

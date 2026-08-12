@@ -1,4 +1,4 @@
-import { AgentRevisionConflictError, assertAgentCapability, assertAgentConfigurationRevision, clearAgentContext, completeAgentDeletionOperation, deleteAgent, getAgentConfigurationRevision, ManagedBySourceAgentError, pauseAgent, previewAgentDeletion, resumeAgent, setProjectLeader, updateAgentAppearance, updateAgentConfiguration, updateAgentDetails, updateAgentModel, updateAgentPrompt, type AgentDeletionOperation } from "@/server/mutations";
+import { AgentRevisionConflictError, assertAgentCapability, assertAgentConfigurationRevision, clearAgentContext, completeAgentDeletionOperation, deleteAgent, getAgentConfigurationRevision, ManagedBySourceAgentError, pauseAgent, previewAgentDeletion, resumeAgent, setAgentDelegate, setProjectLeader, updateAgentAppearance, updateAgentConfiguration, updateAgentDetails, updateAgentModel, updateAgentPrompt, type AgentDeletionOperation } from "@/server/mutations";
 import { restartProject } from "@/server/supervisor";
 import { handleAgentPatch } from "./agent-actions";
 import { getModelCatalog } from "@/server/model-catalog";
@@ -221,6 +221,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pr
     pauseAgent,
     resumeAgent,
     clearAgentContext,
+    setAgentDelegate,
     assertCapability: (capability) => assertAgentCapability(projectId, agentId, capability),
     scheduleRestart: (id) => {
       setImmediate(() => {

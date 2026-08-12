@@ -29,3 +29,18 @@ test("a plain worker is described as status-only with no delegation or messaging
   assert.equal(capability.label, "Status only");
   assert.match(capability.detail, /cannot delegate or message other agents/i);
 });
+
+test("a worker explicitly granted delegate_agents is described as able to delegate and message the team", () => {
+  const capability = agentCapability({ isLeader: false, isIdeaAgent: false, isDelegate: true });
+
+  assert.equal(capability.label, "Delegates work");
+  assert.match(capability.detail, /granted delegation/i);
+  assert.match(capability.detail, /without being project leader/i);
+});
+
+test("the project leader keeps the leader capability even if also listed as a delegate", () => {
+  const capability = agentCapability({ isLeader: true, isIdeaAgent: false, isDelegate: true });
+
+  assert.equal(capability.label, "Delegates work");
+  assert.match(capability.detail, /^Can delegate tasks and message any agent directly\.$/);
+});
