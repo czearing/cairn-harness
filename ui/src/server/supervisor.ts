@@ -25,6 +25,22 @@ export function startAllProjects() {
   }
 }
 
+// Used by the auto-updater to free a locked release binary on Windows before rebuilding it.
+// Unlike pauseProject(), this never writes the pause marker: it is a transient stop that
+// startAllProjects()/ensureProjectRunning() will reverse for every project the user has not
+// paused themselves, so an update never leaves a project looking paused in the dashboard.
+export function stopAllProjects() {
+  for (const project of getProjects()) {
+    const config = getProjectConfigPath(project.id);
+    if (!config) continue;
+    try {
+      stopProject(config);
+    } catch (error) {
+      console.error(`Could not stop project worker for ${project.id}`, error);
+    }
+  }
+}
+
 export function ensureProjectRunning(projectId: string) {
   if (!supervisorEnabled()) return false;
   const config = getProjectConfigPath(projectId);
