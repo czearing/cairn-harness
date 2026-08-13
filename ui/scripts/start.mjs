@@ -17,9 +17,10 @@ if (orphans.length > 0) {
   console.log(`Removed ${orphans.length} orphaned runtime dist directories`);
 }
 const createdRuntime = createRuntimeDist(sourceDist, runtimeDist);
+const activeDist = createdRuntime ?? sourceDist;
 const next = path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next");
 const child = spawn(process.execPath, [next, "start", ...process.argv.slice(2)], {
-  env: productionNextEnv(process.env, runtimeDist),
+  env: productionNextEnv(process.env, activeDist),
   stdio: "inherit",
 });
 
@@ -28,7 +29,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 child.on("exit", (code, signal) => {
-  removeRuntimeDist(runtimeDist, createdRuntime);
+  removeRuntimeDist(activeDist, createdRuntime !== null);
   if (signal) process.kill(process.pid, signal);
   else process.exitCode = code ?? 1;
 });

@@ -3,10 +3,10 @@ import path from "node:path";
 
 const MANIFESTS = ["build-manifest.json", "app-build-manifest.json"];
 
-export function createRuntimeDist(source, runtime) {
+export function createRuntimeDist(source, runtime, { rename = renameSync } = {}) {
   const sourcePath = path.resolve(source);
   const runtimePath = path.resolve(runtime);
-  if (sourcePath === runtimePath) return false;
+  if (sourcePath === runtimePath) return null;
   if (!existsSync(sourcePath)) {
     throw new Error(`Production build not found: ${sourcePath}`);
   }
@@ -15,8 +15,18 @@ export function createRuntimeDist(source, runtime) {
   cpSync(sourcePath, stagingPath, { recursive: true });
   assertCompleteDist(stagingPath);
   rmSync(runtimePath, { recursive: true, force: true });
-  renameSync(stagingPath, runtimePath);
-  return true;
+  try {
+    rename(stagingPath, runtimePath);
+    return runtime;
+  } catch (error) {
+    // Real-time antivirus can hold handles on a freshly copied tree long enough that this rename
+    // fails for as long as anyone retries. The copy is already complete and verified, so serve it
+    // where it landed; refusing to start leaves the dashboard down until a human intervenes.
+    if (!existsSync(stagingPath)) throw error;
+    console.warn(`Serving the runtime build in place: ${error.code || error.message}`);
+    // Next resolves NEXT_DIST_DIR against the project root, so keep the caller's path form.
+    return `${runtime}.staging`;
+  }
 }
 
 /// Rejects a torn copy taken while the source build was still being written.

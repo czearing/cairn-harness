@@ -78,3 +78,48 @@ function sourceWithChunk(directory, content) {
   writeFileSync(path.join(directory, "BUILD_ID"), "test-build");
   return directory;
 }
+
+test("a rename blocked by antivirus still yields a servable runtime dist", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "harness-runtime-"));
+  const source = sourceWithChunk(path.join(root, "source"), "first");
+  const runtime = path.join(root, "runtime");
+  try {
+    // Windows real-time scanning can hold a freshly copied tree indefinitely, so a start that
+    // insists on the rename never comes back up.
+    const blocked = () => {
+      throw Object.assign(new Error("EPERM: operation not permitted, rename"), { code: "EPERM" });
+    };
+    const dist = createRuntimeDist(source, runtime, { rename: blocked });
+    assert.equal(dist, `${runtime}.staging`);
+    assert.equal(readFileSync(path.join(dist, "chunk.js"), "utf8"), "first");
+    removeRuntimeDist(dist, true);
+    assert.throws(() => readFileSync(path.join(dist, "chunk.js")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an unchanged dist path reports that nothing was copied", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "harness-runtime-"));
+  const source = sourceWithChunk(path.join(root, "source"), "first");
+  try {
+    assert.equal(createRuntimeDist(source, source), null);
+    assert.equal(readFileSync(path.join(source, "chunk.js"), "utf8"), "first");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the runtime dist is reported in the caller's path form so Next can resolve it", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "harness-runtime-"));
+  const cwd = process.cwd();
+  try {
+    sourceWithChunk(path.join(root, "source"), "first");
+    process.chdir(root);
+    // Next resolves NEXT_DIST_DIR against the project root, so an absolute path never loads.
+    assert.equal(createRuntimeDist("source", "runtime"), "runtime");
+  } finally {
+    process.chdir(cwd);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
