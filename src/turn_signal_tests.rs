@@ -367,3 +367,51 @@ fn holds_back_a_half_written_line_until_it_is_terminated() {
     assert!(scan.advance(&path, None).unwrap());
     assert_eq!(scan.into_events().text, "split");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_flood_of_notifications_still_returns_the_turn_promptly() {
+    // A streaming agent raises a filesystem notification per append, which is what lets the
+    // wait loop spin. Coalescing those wakes must not delay the turn itself.
+    let root = tempfile::tempdir().unwrap();
+    let mut signal = TurnSignal::new(root.path().to_path_buf(), "agent", "session").unwrap();
+    let file = root
+        .path()
+        .join(".cairn-harness")
+        .join("copilot-home")
+        .join("agent")
+        .join("session-state")
+        .join("session")
+        .join("events.jsonl");
+
+    // Blocking file writes belong off the runtime; on a current-thread runtime they starve the
+    // very loop under test and the assertion below would measure the writer, not the fix.
+    let writer = tokio::task::spawn_blocking(move || {
+        let mut handle = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&file)
+            .unwrap();
+        for index in 0..500 {
+            writeln!(
+                handle,
+                r#"{{"type":"assistant.message","data":{{"content":"{index}"}}}}"#
+            )
+            .unwrap();
+            handle.flush().unwrap();
+        }
+        writeln!(
+            handle,
+            r#"{{"type":"hook.end","data":{{"hookType":"agentStop","output":{{"decision":"allow"}}}}}}"#
+        )
+        .unwrap();
+        handle.flush().unwrap();
+    });
+
+    let events = tokio::time::timeout(Duration::from_secs(10), signal.wait_terminal_after(0))
+        .await
+        .expect("a flood of notifications must not stall the turn")
+        .unwrap();
+    writer.await.unwrap();
+
+    assert!(events.text.contains("499"), "every appended event is absorbed");
+}

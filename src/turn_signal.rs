@@ -9,7 +9,17 @@ use anyhow::{Context, Result};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::Value;
 use tokio::sync::mpsc;
-use tokio::time::{Duration, sleep};
+use tokio::time::{Duration, Instant, sleep};
+
+/// Shortest gap allowed between two scans of the event file.
+///
+/// The watcher sends one notification per filesystem write, and an agent streaming a turn
+/// appends thousands of times a second, so the notification channel is effectively always
+/// ready. Without a floor the wait loop scans as fast as the CPU allows and burns whole cores
+/// on a busy agent even though each individual scan is cheap. This is a responsiveness budget,
+/// not a throttle on the work: it still notices a change an order of magnitude faster than the
+/// 100ms idle fallback, so an operator message is picked up just as promptly.
+const MIN_SCAN_INTERVAL: Duration = Duration::from_millis(10);
 
 pub struct TurnSignal {
     file: PathBuf,
@@ -75,6 +85,7 @@ impl TurnSignal {
 
     async fn wait_for(&mut self, start: u64, marker: Option<&str>) -> Result<TurnEvents> {
         let mut scan = TurnScan::new(start, &self.running_shells);
+        let mut last_scan = Instant::now();
         loop {
             if scan.advance(&self.file, marker)? {
                 let events = scan.into_events();
@@ -89,6 +100,15 @@ impl TurnSignal {
                 }
                 _ = sleep(Duration::from_millis(100)) => {}
             }
+            let elapsed = last_scan.elapsed();
+            if elapsed < MIN_SCAN_INTERVAL {
+                sleep(MIN_SCAN_INTERVAL - elapsed).await;
+            }
+            // One append can raise several notifications and a streaming turn raises them
+            // continuously, so collapse everything queued during the wait into this one scan
+            // instead of rescanning once per notification.
+            while self.events.try_recv().is_ok() {}
+            last_scan = Instant::now();
         }
     }
 }
