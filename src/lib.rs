@@ -30,6 +30,7 @@ mod release_finalization_store;
 mod release_store;
 mod replica;
 pub mod runner;
+mod session_gc;
 mod shell_command;
 pub mod skill;
 pub mod store;

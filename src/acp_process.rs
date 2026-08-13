@@ -40,6 +40,7 @@ pub async fn run(
         .await?;
     let runtime_agent = worker.id.clone();
     let runtime_cleanup_id = runtime_id.clone();
+    prune_unreachable_sessions(&root, &worker.id, &session_id);
     let agent = agent(&config, &root, &worker, &runtime_id)?;
     let result: Result<()> = async {
         Client
@@ -131,6 +132,28 @@ async fn clear_incompatible_session(
 ) -> Result<()> {
     let store = Store::open(&root.join(".cairn-harness").join("harness.db")).await?;
     store.clear_session_if(worker_id, session_id).await
+}
+
+/// Agents build inside their own session workspace, so unreachable sessions retain whole `target/`
+/// trees. Reclaiming them at start keeps the project directory from growing without bound.
+fn prune_unreachable_sessions(root: &std::path::Path, worker_id: &str, session_id: &str) {
+    let copilot_home = root
+        .join(".cairn-harness")
+        .join("copilot-home")
+        .join(worker_id);
+    match crate::session_gc::prune(&copilot_home, session_id) {
+        Ok(0) => {}
+        Ok(reclaimed) => {
+            tracing::info!(
+                agent = %worker_id,
+                reclaimed_bytes = reclaimed,
+                "reclaimed unreachable Copilot session workspaces"
+            )
+        }
+        Err(error) => {
+            tracing::warn!(agent = %worker_id, %error, "could not reclaim session workspaces")
+        }
+    }
 }
 
 fn agent(
