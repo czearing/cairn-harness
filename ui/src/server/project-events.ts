@@ -1,7 +1,7 @@
-import { watch, type FSWatcher } from "node:fs";
 import type { Project } from "@/lib/types";
 import { conversationVersions } from "./project-conversation-versions";
 import { isDatabase, isRelevantProjectEvent, projectEventAgent } from "./project-event-path";
+import { watchProjectScoped, type ProjectWatcher } from "./scoped-project-watcher";
 
 export interface ProjectEvent { projectId: string; conversations: string[]; }
 export const PROJECT_EVENT_COALESCE_MS = 150;
@@ -11,13 +11,14 @@ const state = globalThis as typeof globalThis & { harnessEvents?: EventState };
 interface EventState {
   subscriptions: Map<Listener, Map<string, Project>>;
   degradedListeners: Map<Listener, DegradedListener>;
-  watchers: Map<string, FSWatcher>;
+  watchers: Map<string, ProjectWatcher>;
   projects: Map<string, Project>;
   queued: Map<string, ProjectEvent>;
   versions: Map<string, Map<string, string>>;
 }
+type WatchListener = (event: string, file: string | Buffer | null) => void;
 interface EventDependencies {
-  watchProject: (root: string, listener: (event: string, file: string | Buffer | null) => void) => FSWatcher;
+  watchProject: (root: string, listener: WatchListener, workDir?: string) => ProjectWatcher;
   conversationVersions: (project: Project) => Map<string, string>;
   schedule?: (callback: () => void) => void;
 }
@@ -45,7 +46,7 @@ export function createProjectEventSubscriber(dependencies: EventDependencies) {
 }
 
 const defaultDependencies: EventDependencies = {
-  watchProject: (root, listener) => watch(root, { recursive: true }, listener),
+  watchProject: (root, listener, workDir) => watchProjectScoped(root, listener, workDir),
   conversationVersions,
   // A single SQLite commit emits a burst of WAL events. Without a real-time window each burst
   // becomes another client refetch, and every refetch re-reads the project synchronously.
@@ -86,7 +87,7 @@ function subscribe(
         if (!latest) return;
         const changed = String(file || "");
         if (isRelevantProjectEvent(changed, latest.workDir)) emit(current, latest, changed, dependencies);
-      });
+      }, project.workDir);
       current.watchers.set(root, watcher);
       watcher.on?.("error", () => watcherFailed(current, root, watcher));
     } catch {
@@ -110,7 +111,7 @@ function subscribe(
   };
 }
 
-function watcherFailed(current: EventState, root: string, watcher: FSWatcher) {
+function watcherFailed(current: EventState, root: string, watcher: ProjectWatcher) {
   if (current.watchers.get(root) !== watcher) return;
   watcher.close();
   current.watchers.delete(root);
