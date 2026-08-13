@@ -67,7 +67,7 @@ pub fn build(
     } else if task.kind == "generator" {
         writeln!(
             prompt,
-            "Call team_status first to see who is idle or overloaded right now. Call task_create once with a fully self-contained task. You are the delegator: read the Peers list above and set 'to' to the exact peer agent id you are choosing to hand this to (never yourself, never an idea agent); Harness assigns it to exactly that agent and nothing routes or picks a target for you. The task body must be the complete, immediately actionable procedure for that assignee, written as instructions to execute right now in their very next turn. This turn is only about filing that task: do not personally execute the work yourself and do not use task_delegate or message_send to also notify anyone (task_create alone assigns it). Never write the filed task's own body telling its assignee to defer, skip execution, or only create a placeholder for later; that restriction applies solely to this filing turn, never to the task you hand off."
+            "Call team_status first to see who is idle or overloaded right now. Call task_create once. You are the delegator: read the Peers list above and set 'to' to the exact peer agent id you are choosing to hand this to (never yourself, never an idea agent); Harness assigns it to exactly that agent and nothing routes or picks a target for you. Your role instructions above are the only authority on what the task body contains: Harness never dictates its content, length, format, or tone, so when your role tells you to file just a link or a single line, file exactly that and add nothing around it. This turn is only about filing that task: do not personally execute the work yourself and do not use task_delegate or message_send to also notify anyone (task_create alone assigns it). Never write the filed task's own body telling its assignee to defer, skip execution, or only create a placeholder for later; that restriction applies solely to this filing turn, never to the task you hand off."
         )
         .unwrap();
     } else if task.is_peer_message() {
@@ -345,6 +345,53 @@ mod tests {
 
         assert!(prompt.contains("Peer note"));
         assert!(!prompt.contains("Finish this assignment completely in this turn"));
+    }
+
+    #[test]
+    fn generator_prompt_leaves_task_body_content_to_the_agents_own_role() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("workspace");
+        std::fs::create_dir(&root).unwrap();
+        let file = directory.path().join("project.json");
+        std::fs::write(
+            &file,
+            format!(
+                r#"{{"name":"Test","root":{},"leader":"ideas","idea_agents":[{{"agent":"ideas","task_limit":4}}],"roles":[{{"name":"ideas","description":"Ideas","prompt":"File a work item containing ONLY the link to the md file."}},{{"name":"builder","description":"Build","prompt":"Build."}}]}}"#,
+                serde_json::to_string(&root).unwrap()
+            ),
+        )
+        .unwrap();
+        let config = ProjectConfig::load(&file).unwrap();
+        let workers = config.workers();
+        let prompt = build(
+            &config,
+            &workers[0],
+            &Assignment {
+                id: "opaque:generator".into(),
+                parent_id: None,
+                kind: "generator".into(),
+                source: "automatic".into(),
+                creator: "harness".into(),
+                assignee: "ideas".into(),
+                topic: "next idea".into(),
+                body: "Create the next task.".into(),
+                attempts: 1,
+                claim_generation: 1,
+            },
+            &[],
+            "",
+        );
+
+        assert!(prompt.contains("Call task_create once"));
+        assert!(prompt.contains("set 'to' to the exact peer agent id"));
+        assert!(prompt.contains("Harness never dictates its content, length, format, or tone"));
+        assert!(prompt.contains("file exactly that and add nothing around it"));
+        // The harness must never prescribe the filed task's body; only the agent's role may.
+        assert!(!prompt.contains("The task body must be"));
+        assert!(!prompt.contains("immediately actionable procedure"));
+        assert!(!prompt.contains("execute right now in their very next turn"));
+        // The earlier "do not execute" bleed guard must stay in place.
+        assert!(prompt.contains("that restriction applies solely to this filing turn"));
     }
 
     #[test]
