@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { connectWithRetry } from "./reconnecting-event-source";
 
 interface ProjectEvent { projectId: string; conversations: string[]; }
 
@@ -10,31 +11,32 @@ export function useProjectEvents(onUpdate: (event: ProjectEvent) => void) {
   const transportDegraded = useRef(false);
   const update = useEffectEvent(onUpdate);
   useEffect(() => {
-    const events = new EventSource("/api/events");
     const syncStatus = () => setDegraded(watcherDegraded.current || transportDegraded.current);
-    events.onmessage = (event) => {
-      if (event.data === "ready") {
-        watcherDegraded.current = false;
-        transportDegraded.current = false;
+    return connectWithRetry({
+      url: "/api/events",
+      onConnected: (connected) => {
+        transportDegraded.current = !connected;
         syncStatus();
-        return;
-      }
-      if (event.data === "degraded") {
-        watcherDegraded.current = true;
-        syncStatus();
-        return;
-      }
-      try {
-        transportDegraded.current = false;
-        syncStatus();
-        update(JSON.parse(event.data) as ProjectEvent);
-      } catch {}
-    };
-    events.onerror = () => {
-      transportDegraded.current = true;
-      syncStatus();
-    };
-    return () => events.close();
+      },
+      onMessage: (data) => {
+        if (data === "ready") {
+          watcherDegraded.current = false;
+          transportDegraded.current = false;
+          syncStatus();
+          return;
+        }
+        if (data === "degraded") {
+          watcherDegraded.current = true;
+          syncStatus();
+          return;
+        }
+        try {
+          transportDegraded.current = false;
+          syncStatus();
+          update(JSON.parse(data) as ProjectEvent);
+        } catch {}
+      },
+    });
   }, []);
   return degraded;
 }
