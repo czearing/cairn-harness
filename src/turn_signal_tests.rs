@@ -280,3 +280,90 @@ fn allows_detached_servers_to_survive_terminal_output() {
         .unwrap();
     assert!(matches!(events.stop, TurnStop::Allowed));
 }
+
+#[test]
+fn absorbs_each_event_once_across_wakes() {
+    let mut file = NamedTempFile::new().unwrap();
+    let path = file.path().to_path_buf();
+    writeln!(
+        file,
+        r#"{{"type":"assistant.message","data":{{"content":"one"}}}}"#
+    )
+    .unwrap();
+    file.flush().unwrap();
+
+    let mut scan = TurnScan::new(0, &HashSet::new());
+    assert!(!scan.advance(&path, None).unwrap());
+    let consumed = scan.offset;
+    assert_eq!(consumed, file.as_file().metadata().unwrap().len());
+
+    writeln!(
+        file,
+        r#"{{"type":"assistant.message","data":{{"content":"two"}}}}"#
+    )
+    .unwrap();
+    writeln!(
+        file,
+        r#"{{"type":"hook.end","data":{{"hookType":"agentStop","output":{{"decision":"allow"}}}}}}"#
+    )
+    .unwrap();
+    file.flush().unwrap();
+
+    assert!(scan.advance(&path, None).unwrap());
+    assert!(scan.offset > consumed);
+    assert_eq!(scan.into_events().text, "one\ntwo");
+}
+
+#[test]
+fn a_wake_without_new_bytes_repeats_no_events() {
+    let mut file = NamedTempFile::new().unwrap();
+    let path = file.path().to_path_buf();
+    writeln!(
+        file,
+        r#"{{"type":"assistant.message","data":{{"content":"only"}}}}"#
+    )
+    .unwrap();
+    file.flush().unwrap();
+
+    let mut scan = TurnScan::new(0, &HashSet::new());
+    assert!(!scan.advance(&path, None).unwrap());
+    assert!(!scan.advance(&path, None).unwrap());
+    assert!(!scan.advance(&path, None).unwrap());
+
+    writeln!(
+        file,
+        r#"{{"type":"hook.end","data":{{"hookType":"agentStop","output":{{"decision":"allow"}}}}}}"#
+    )
+    .unwrap();
+    file.flush().unwrap();
+
+    assert!(scan.advance(&path, None).unwrap());
+    assert_eq!(scan.into_events().text, "only");
+}
+
+#[test]
+fn holds_back_a_half_written_line_until_it_is_terminated() {
+    let mut file = NamedTempFile::new().unwrap();
+    let path = file.path().to_path_buf();
+    write!(
+        file,
+        r#"{{"type":"assistant.message","data":{{"content":"sp"#
+    )
+    .unwrap();
+    file.flush().unwrap();
+
+    let mut scan = TurnScan::new(0, &HashSet::new());
+    assert!(!scan.advance(&path, None).unwrap());
+    assert!(scan.output.is_empty());
+
+    writeln!(file, r#"lit"}}}}"#).unwrap();
+    writeln!(
+        file,
+        r#"{{"type":"hook.end","data":{{"hookType":"agentStop","output":{{"decision":"allow"}}}}}}"#
+    )
+    .unwrap();
+    file.flush().unwrap();
+
+    assert!(scan.advance(&path, None).unwrap());
+    assert_eq!(scan.into_events().text, "split");
+}

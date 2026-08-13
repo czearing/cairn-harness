@@ -74,10 +74,10 @@ impl TurnSignal {
     }
 
     async fn wait_for(&mut self, start: u64, marker: Option<&str>) -> Result<TurnEvents> {
+        let mut scan = TurnScan::new(start, &self.running_shells);
         loop {
-            if let Some(events) =
-                read_events_with_shells(&self.file, start, marker, &self.running_shells)?
-            {
+            if scan.advance(&self.file, marker)? {
+                let events = scan.into_events();
                 self.running_shells = events.running_shells.clone();
                 return Ok(events);
             }
@@ -103,44 +103,106 @@ fn read_events(file: &PathBuf, start: u64, marker: Option<&str>) -> Result<Optio
     read_events_with_shells(file, start, marker, &HashSet::new())
 }
 
+#[cfg(test)]
 fn read_events_with_shells(
     file: &PathBuf,
     start: u64,
     marker: Option<&str>,
     initial_running_shells: &HashSet<String>,
 ) -> Result<Option<TurnEvents>> {
-    let mut source = match File::open(file) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error.into()),
-    };
-    source.seek(SeekFrom::Start(start))?;
-    let mut text = String::new();
-    source.read_to_string(&mut text)?;
-    let mut output = Vec::new();
-    let mut tools = Vec::new();
-    let mut tool_calls = HashMap::new();
-    let mut running_shells = initial_running_shells.clone();
-    let mut marker_seen = false;
-    let mut stop = None;
-    for line in text.lines() {
-        let Ok(event) = serde_json::from_str::<Value>(line) else {
-            continue;
+    let mut scan = TurnScan::new(start, initial_running_shells);
+    if scan.advance(file, marker)? {
+        return Ok(Some(scan.into_events()));
+    }
+    Ok(None)
+}
+
+/// Incremental scan over one agent turn's slice of `events.jsonl`.
+///
+/// The file is append only, so a wake only has to absorb the bytes written since the previous
+/// one. Re-reading and re-parsing from the turn's start offset on every wake made the work
+/// quadratic in the size of the turn, which dominates harness CPU on long turns that stream
+/// thousands of events.
+#[derive(Default)]
+struct TurnScan {
+    offset: u64,
+    pending: Vec<u8>,
+    output: Vec<String>,
+    tools: Vec<String>,
+    tool_calls: HashMap<String, (String, Option<String>)>,
+    running_shells: HashSet<String>,
+    marker_seen: bool,
+    stop: Option<TurnStop>,
+}
+
+impl TurnScan {
+    fn new(start: u64, running_shells: &HashSet<String>) -> Self {
+        Self {
+            offset: start,
+            running_shells: running_shells.clone(),
+            ..Self::default()
+        }
+    }
+
+    /// Absorbs every newly appended whole line, reporting whether the turn has finished. A
+    /// trailing partial line is held back until the writer completes it.
+    fn advance(&mut self, file: &PathBuf, marker: Option<&str>) -> Result<bool> {
+        let mut source = match File::open(file) {
+            Ok(source) => source,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(error.into()),
+        };
+        let mut buffer = std::mem::take(&mut self.pending);
+        source.seek(SeekFrom::Start(self.offset))?;
+        self.offset += source.read_to_end(&mut buffer)? as u64;
+        let mut consumed = 0;
+        let mut absorbed = Ok(());
+        while let Some(index) = buffer[consumed..].iter().position(|byte| *byte == b'\n') {
+            let line = &buffer[consumed..consumed + index];
+            consumed += index + 1;
+            absorbed = self.absorb(line, marker);
+            if absorbed.is_err() {
+                break;
+            }
+        }
+        buffer.drain(..consumed);
+        self.pending = buffer;
+        absorbed?;
+        let terminal = marker.is_none() && self.stop.is_some();
+        let marked = self.marker_seen && matches!(self.stop, Some(TurnStop::Allowed));
+        Ok(terminal || marked)
+    }
+
+    fn into_events(self) -> TurnEvents {
+        TurnEvents {
+            text: self.output.join("\n"),
+            tools: self.tools,
+            stop: self.stop.unwrap_or_default(),
+            running_shells: self.running_shells,
+        }
+    }
+
+    fn absorb(&mut self, line: &[u8], marker: Option<&str>) -> Result<()> {
+        let Ok(text) = std::str::from_utf8(line) else {
+            return Ok(());
+        };
+        let Ok(event) = serde_json::from_str::<Value>(text) else {
+            return Ok(());
         };
         match event["type"].as_str() {
             Some("assistant.message") => {
                 if let Some(content) = event["data"]["content"].as_str() {
-                    marker_seen |= marker.is_some_and(|marker| content.contains(marker));
+                    self.marker_seen |= marker.is_some_and(|marker| content.contains(marker));
                     if !content.contains("HARNESS_SESSION_READY") {
-                        output.push(content.to_string());
+                        self.output.push(content.to_string());
                     }
                 }
             }
             Some("tool.execution_start") => {
                 if let Some(name) = event["data"]["toolName"].as_str() {
-                    tools.push(name.to_string());
+                    self.tools.push(name.to_string());
                     if let Some(call_id) = event["data"]["toolCallId"].as_str() {
-                        tool_calls.insert(
+                        self.tool_calls.insert(
                             call_id.to_string(),
                             (
                                 name.to_string(),
@@ -152,51 +214,12 @@ fn read_events_with_shells(
                     }
                 }
             }
-            Some("tool.execution_complete") => {
-                let Some(call_id) = event["data"]["toolCallId"].as_str() else {
-                    continue;
-                };
-                let Some((name, shell_id)) = tool_calls.get(call_id) else {
-                    continue;
-                };
-                let Some(shell_id) = shell_id else {
-                    continue;
-                };
-                let result = event["data"]["result"].to_string();
-                if tool_name(name) == "stop_powershell"
-                    || (tool_name(name) == "read_powershell"
-                        && !result.contains("is still running"))
-                {
-                    running_shells.remove(shell_id);
-                } else if tool_name(name) == "powershell" && result.contains("is still running") {
-                    running_shells.insert(shell_id.clone());
-                }
-            }
+            Some("tool.execution_complete") => self.absorb_tool_result(&event),
             Some("hook.end") if event["data"]["hookType"] == "agentStop" => {
-                stop = Some(if event["data"]["output"]["decision"] == "block" {
-                    TurnStop::Blocked(
-                        event["data"]["output"]["reason"]
-                            .as_str()
-                            .filter(|reason| !reason.is_empty())
-                            .unwrap_or("Continue and complete every requested task.")
-                            .to_string(),
-                    )
-                } else if !running_shells.is_empty() {
-                    TurnStop::Blocked(format!(
-                        "A PowerShell command is still running ({}). Wait for its completion notification, then read it with read_powershell before finishing.",
-                        running_shells
-                            .iter()
-                            .cloned()
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ))
-                } else {
-                    TurnStop::Allowed
-                });
+                self.stop = Some(self.agent_stop(&event));
             }
-
             Some("hook.end") if event["data"]["hookType"] == "subagentStop" => {
-                stop = None;
+                self.stop = None;
             }
             Some("session.error") => {
                 let message = event["data"]["message"]
@@ -206,15 +229,52 @@ fn read_events_with_shells(
             }
             _ => {}
         }
+        Ok(())
     }
-    let terminal = marker.is_none() && stop.is_some();
-    let marked = marker_seen && matches!(stop, Some(TurnStop::Allowed));
-    Ok((terminal || marked).then(|| TurnEvents {
-        text: output.join("\n"),
-        tools,
-        stop: stop.unwrap_or_default(),
-        running_shells,
-    }))
+
+    fn absorb_tool_result(&mut self, event: &Value) {
+        let Some(call_id) = event["data"]["toolCallId"].as_str() else {
+            return;
+        };
+        let Some((name, shell_id)) = self.tool_calls.get(call_id) else {
+            return;
+        };
+        let Some(shell_id) = shell_id.clone() else {
+            return;
+        };
+        let name = tool_name(name).to_string();
+        let result = event["data"]["result"].to_string();
+        if name == "stop_powershell"
+            || (name == "read_powershell" && !result.contains("is still running"))
+        {
+            self.running_shells.remove(&shell_id);
+        } else if name == "powershell" && result.contains("is still running") {
+            self.running_shells.insert(shell_id);
+        }
+    }
+
+    fn agent_stop(&self, event: &Value) -> TurnStop {
+        if event["data"]["output"]["decision"] == "block" {
+            return TurnStop::Blocked(
+                event["data"]["output"]["reason"]
+                    .as_str()
+                    .filter(|reason| !reason.is_empty())
+                    .unwrap_or("Continue and complete every requested task.")
+                    .to_string(),
+            );
+        }
+        if self.running_shells.is_empty() {
+            return TurnStop::Allowed;
+        }
+        TurnStop::Blocked(format!(
+            "A PowerShell command is still running ({}). Wait for its completion notification, then read it with read_powershell before finishing.",
+            self.running_shells
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    }
 }
 
 fn tool_name(name: &str) -> &str {
