@@ -4,9 +4,9 @@ use std::time::{Duration, SystemTime};
 use anyhow::Result;
 
 /// The harness stores exactly one resumable session per agent, so every other session workspace is
-/// already unreachable. They are still kept this long so a previous process that is shutting down
-/// is never disturbed.
-const RETENTION: Duration = Duration::from_secs(6 * 60 * 60);
+/// already unreachable. They are still kept this long so a process that is shutting down, which
+/// keeps its own event log warm, is never disturbed.
+const RETENTION: Duration = Duration::from_secs(60 * 60);
 
 /// Removes session workspaces the agent can no longer resume and reports the reclaimed bytes.
 ///

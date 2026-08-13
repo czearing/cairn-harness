@@ -6,7 +6,7 @@ use super::{is_session_id, prune_at};
 
 const SESSION_A: &str = "0cfadcc6-3aca-4292-86a3-e9041d981ada";
 const SESSION_B: &str = "8625dd8e-69c2-4fb5-82f5-cce024543da4";
-const RETENTION: Duration = Duration::from_secs(6 * 60 * 60);
+const RETENTION: Duration = Duration::from_secs(60 * 60);
 
 fn session(home: &std::path::Path, id: &str) -> std::path::PathBuf {
     let path = home.join("session-state").join(id);
