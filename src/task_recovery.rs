@@ -3,6 +3,36 @@ use anyhow::Result;
 use crate::{models::Assignment, store::Store, task_claim::ClaimMutation};
 
 impl Store {
+    /// Fails pending/buffered delegations whose assignee is no longer a configured agent.
+    ///
+    /// Deleting an agent removes its role from the live config but historically left its
+    /// `agents`/`agent_replica_profiles` rows in place, so `resolve_delegation_target`'s
+    /// exact-match fallback could still resolve a delegation onto a name nobody polls for.
+    /// That orphaned delegation then blocks its parent in `waiting` forever, since nothing
+    /// ever claims or completes it. Failing it here lets `recover`'s existing
+    /// no-active-children rule promote the parent back to `pending` in the same sweep.
+    pub(crate) async fn fail_orphaned_delegations(&self, active_agent_ids: &[String]) -> Result<u64> {
+        if active_agent_ids.is_empty() {
+            return Ok(0);
+        }
+        let placeholders = active_agent_ids
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(",");
+        let query = format!(
+            "UPDATE tasks SET status='failed',error='assignee is no longer a configured agent'
+             WHERE kind='delegation' AND status IN ('pending','buffered')
+             AND assignee NOT IN ({placeholders})"
+        );
+        let mut statement = sqlx::query(sqlx::AssertSqlSafe(query));
+        for id in active_agent_ids {
+            statement = statement.bind(id);
+        }
+        let result = statement.execute(&self.pool).await?;
+        Ok(result.rows_affected())
+    }
+
     pub(crate) async fn retry_claim(
         &self,
         task: &Assignment,

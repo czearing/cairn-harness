@@ -92,6 +92,14 @@ impl Harness {
     }
 
     pub(crate) async fn recover_stale_claims(&self) -> Result<u64> {
+        // Fail delegations aimed at agents no longer in the live roster before recover()'s
+        // waiting-parent promotion runs, so a parent blocked only by a since-deleted delegate
+        // resolves in this same pass instead of waiting forever on a target nobody polls for.
+        let active_agent_ids: Vec<String> =
+            self.config.workers().into_iter().map(|worker| worker.id).collect();
+        self.store
+            .fail_orphaned_delegations(&active_agent_ids)
+            .await?;
         let lease = ChronoDuration::milliseconds(self.policy.claim_lease_ms as i64);
         self.store.recover(&(Utc::now() - lease).to_rfc3339()).await
     }

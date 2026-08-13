@@ -422,6 +422,24 @@ export function deleteAgent(
       WHERE assignee IN (${placeholders}) AND status IN ('pending','claimed','waiting','deferred','buffered','backlog')
       LIMIT 1`).get(...affectedIds) as { assignee?: string } | undefined;
     if (active) throw new Error("Finish or cancel this agent's active work before deleting it");
+    // Deleting the config role alone leaves the agent's row resolvable forever: the Rust
+    // delegation resolver's exact-match fallback (resolve_delegation_target) trusts any row in
+    // `agents` regardless of whether its role still exists, so a stale row lets a future
+    // delegation target a name nobody is polling for and hang its parent in 'waiting' forever.
+    // The active-task check above already guards this delete, and replica profiles/capabilities
+    // are rebuilt from the live config on every bootstrap anyway, so removing them here too is safe.
+    // Tables are created lazily by the Rust binary's schema migration, so guard against a
+    // database that hasn't created them yet rather than failing the whole deletion.
+    const hasTable = (table: string) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table));
+    if (hasTable("agent_replica_profiles")) {
+      db.prepare(`DELETE FROM agent_replica_profiles WHERE agent_id IN (${placeholders})`).run(...affectedIds);
+    }
+    if (hasTable("agent_capabilities")) {
+      db.prepare(`DELETE FROM agent_capabilities WHERE agent_id IN (${placeholders})`).run(...affectedIds);
+    }
+    if (hasTable("agents")) {
+      db.prepare(`DELETE FROM agents WHERE agent_id IN (${placeholders})`).run(...affectedIds);
+    }
     writeAgentConfig(configPath, config, options.writeProjectConfig || writeProjectConfig);
     operation.revision = config.configuration_revision || operation.revision;
     db.exec("COMMIT");

@@ -322,6 +322,64 @@ test("deleting a source removes its complete local-copy group while retaining hi
   ]);
 });
 
+test("deleting an agent removes its agents/agent_replica_profiles/agent_capabilities rows so a future delegation cannot resolve to it", (context) => {
+  const root = mkdtempSync(path.join(tmpdir(), "harness-agent-row-cleanup-"));
+  const projectId = "row-cleanup";
+  const projectDirectory = path.join(root, projectId);
+  const workspace = path.join(root, "workspace");
+  const harnessDirectory = path.join(workspace, ".cairn-harness");
+  const configPath = path.join(projectDirectory, "project.json");
+  const databasePath = path.join(harnessDirectory, "harness.db");
+  const previousProjects = process.env.HARNESS_PROJECTS;
+  context.after(() => {
+    rmSync(root, { recursive: true, force: true });
+    restoreEnvironment("HARNESS_PROJECTS", previousProjects);
+  });
+
+  mkdirSync(projectDirectory, { recursive: true });
+  mkdirSync(harnessDirectory, { recursive: true });
+  writeFileSync(configPath, `${JSON.stringify({
+    name: "Row cleanup",
+    root: workspace,
+    leader: "lead",
+    roles: [
+      { name: "lead", description: "Lead", prompt: "Lead." },
+      { name: "builder", description: "Build", prompt: "Build." },
+      { name: "other", description: "Other", prompt: "Other." },
+    ],
+  }, null, 2)}\n`);
+  process.env.HARNESS_PROJECTS = configPath;
+
+  const db = new DatabaseSync(databasePath);
+  db.exec(`CREATE TABLE agents(agent_id TEXT PRIMARY KEY,role TEXT,session_id TEXT,status TEXT,current_topic TEXT,runtime_id TEXT,updated_at TEXT);
+    CREATE TABLE agent_replica_profiles(agent_id TEXT PRIMARY KEY,role_template TEXT,replica_eligible INTEGER);
+    CREATE TABLE agent_capabilities(agent_id TEXT,capability TEXT,PRIMARY KEY(agent_id,capability));
+    CREATE TABLE tasks(id TEXT PRIMARY KEY,assignee TEXT,status TEXT,error TEXT);
+    INSERT INTO agents VALUES('builder','builder','session-1','idle',NULL,'',datetime('now'));
+    INSERT INTO agents VALUES('other','other','session-2','idle',NULL,'',datetime('now'));
+    INSERT INTO agent_replica_profiles VALUES('builder','builder',0);
+    INSERT INTO agent_capabilities VALUES('builder','delegate');
+    INSERT INTO tasks VALUES('historic','builder','completed','Retained')`);
+  db.close();
+
+  deleteAgent(projectId, "builder");
+
+  const remaining = new DatabaseSync(databasePath, { readOnly: true });
+  try {
+    assert.deepEqual(remaining.prepare("SELECT agent_id FROM agents ORDER BY agent_id").all().map((row) => row.agent_id), ["other"]);
+    assert.deepEqual(remaining.prepare("SELECT agent_id FROM agent_replica_profiles").all(), []);
+    assert.deepEqual(remaining.prepare("SELECT agent_id FROM agent_capabilities").all(), []);
+  } finally {
+    remaining.close();
+  }
+  // A deleted agent's historical task rows are plain text (no FK to `agents`), so they stay
+  // for audit purposes even though the agent's own rows are gone.
+  assert.deepEqual(readTasks(databasePath), [
+    { id: "historic", assignee: "builder", status: "completed", error: "Retained" },
+  ]);
+  assert.deepEqual(JSON.parse(readFileSync(configPath, "utf8")).roles.map((role) => role.name), ["lead", "other"]);
+});
+
 function readTasks(databasePath) {
   const db = new DatabaseSync(databasePath, { readOnly: true });
   try {

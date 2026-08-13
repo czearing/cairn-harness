@@ -371,6 +371,73 @@ async fn recovery_requeues_waiting_tasks_without_open_children() {
 }
 
 #[tokio::test]
+async fn fail_orphaned_delegations_unblocks_a_parent_delegated_to_a_deleted_agent() {
+    // Deleting an agent from the project config used to leave its row in place, so
+    // resolve_delegation_target's exact-match fallback could still resolve a brand new
+    // delegation onto that name, orphaning it forever since no worker polls for it and
+    // leaving the delegating parent stuck in 'waiting'. fail_orphaned_delegations fails
+    // any pending/buffered delegation whose assignee is no longer a live agent, so
+    // recover()'s existing no-active-children rule can promote the parent in the same sweep.
+    let root = tempdir().unwrap();
+    let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+    for agent in ["lead", "deleted-worker"] {
+        store.register(&worker(agent)).await.unwrap();
+    }
+    let parent = store
+        .create_message("human", "lead", "root", "Lead the work.")
+        .await
+        .unwrap();
+    store.claim("lead").await.unwrap().unwrap();
+    let child = store
+        .delegate_current("lead", "deleted-worker", "implementation", "Implement.")
+        .await
+        .unwrap();
+    assert_eq!(store.task_status(&child).await.unwrap(), "pending");
+    assert_eq!(task_state(&store, &parent).await.0, "waiting");
+
+    // "deleted-worker" no longer appears in the live roster passed to fail_orphaned_delegations,
+    // simulating it having been removed from the project config after the delegation was created.
+    let live_agents = vec!["lead".to_string()];
+    let failed = store
+        .fail_orphaned_delegations(&live_agents)
+        .await
+        .unwrap();
+    assert_eq!(failed, 1);
+    assert_eq!(store.task_status(&child).await.unwrap(), "failed");
+
+    store.recover("9999-12-31T23:59:59Z").await.unwrap();
+
+    assert_eq!(task_state(&store, &parent).await.0, "pending");
+}
+
+#[tokio::test]
+async fn fail_orphaned_delegations_leaves_delegations_to_live_agents_untouched() {
+    let root = tempdir().unwrap();
+    let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+    for agent in ["lead", "worker"] {
+        store.register(&worker(agent)).await.unwrap();
+    }
+    store
+        .create_message("human", "lead", "root", "Lead the work.")
+        .await
+        .unwrap();
+    store.claim("lead").await.unwrap().unwrap();
+    let child = store
+        .delegate_current("lead", "worker", "implementation", "Implement.")
+        .await
+        .unwrap();
+
+    let live_agents = vec!["lead".to_string(), "worker".to_string()];
+    let failed = store
+        .fail_orphaned_delegations(&live_agents)
+        .await
+        .unwrap();
+
+    assert_eq!(failed, 0);
+    assert_eq!(store.task_status(&child).await.unwrap(), "pending");
+}
+
+#[tokio::test]
 async fn delegated_work_buffers_per_agent_and_promotes_oldest_after_completion() {
     let root = tempdir().unwrap();
     let store = Store::open(&root.path().join("harness.db")).await.unwrap();
