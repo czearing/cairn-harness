@@ -7,7 +7,15 @@ export async function register() {
     import("@/server/harness-update"),
   ]);
   startAllProjects();
-  const reconciliation = setInterval(startAllProjects, supervisorReconcileIntervalMs());
+  // A transient SQLITE_BUSY from a concurrent writer must not reach the runtime as an
+  // uncaught exception, which would take the whole server down between reconciliations.
+  const reconciliation = setInterval(() => {
+    try {
+      startAllProjects();
+    } catch (error) {
+      console.error("Supervisor reconciliation failed; retrying next interval", error);
+    }
+  }, supervisorReconcileIntervalMs());
   reconciliation.unref();
 
   // Keeps this machine's harness current with origin/master with no human running git pull +
