@@ -24,11 +24,16 @@ pub fn build(
         .unwrap();
     }
     writeln!(prompt, "Role: {}. {}", worker.description, worker.prompt).unwrap();
-    writeln!(
-        prompt,
-        "Use repository-native search tools. Start from changed files, referenced symbols, and exact import targets. Never recursively scan a drive, user profile, or workspace parent. Never scan a dependency tree, build output, or an entire monorepo; constrain each search to exact source or package directories, use narrow globs, and split broad queries."
-    )
-    .unwrap();
+    // Search guidance is operational advice for an agent doing repository work. A generator
+    // turn only files a task, and anything Harness writes here has been observed getting
+    // copied verbatim into the body the agent files, so it is withheld from that turn.
+    if task.kind != "generator" {
+        writeln!(
+            prompt,
+            "Use repository-native search tools. Start from changed files, referenced symbols, and exact import targets. Never recursively scan a drive, user profile, or workspace parent. Never scan a dependency tree, build output, or an entire monorepo; constrain each search to exact source or package directories, use narrow globs, and split broad queries."
+        )
+        .unwrap();
+    }
     let peers: Vec<_> = config
         .workers()
         .into_iter()
@@ -398,6 +403,9 @@ mod tests {
         assert!(!prompt.contains("do not personally execute the work yourself"));
         assert!(!prompt.contains("team_status first"));
         assert!(!prompt.contains("Do not execute or delegate it"));
+        // Observed verbatim in filed bodies: harness search guidance must not reach this turn.
+        assert!(!prompt.contains("Start from changed files, referenced symbols"));
+        assert!(!prompt.contains("Never recursively scan a drive"));
     }
 
     #[test]
