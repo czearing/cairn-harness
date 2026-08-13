@@ -33,7 +33,17 @@ export function CompletionChart({ series, colors = {}, titles = {}, emptyMessage
       <p className={styles.empty}>{emptyMessage || "No work has been completed yet."}</p>
     </div>;
   }
+  const range = first === last ? dayLabel(last) : `${dayLabel(first)} – ${dayLabel(last)}`;
+  // Only the floor and the peak are labelled. The exact figure for each agent is read from the legend, so
+  // repeating every intermediate gridline value asks the eye to dismiss numbers it never needed.
+  const labelled = new Set([geometry.ticks[0], geometry.ticks[geometry.ticks.length - 1]]);
   return <div className={`${styles.chart} ${className}`}>
+    <div className={styles.summary}>
+      <span className={styles.total}>{series.total}</span>
+      <span className={styles.totalLabel}>
+        {series.total === 1 ? "item" : "items"} completed · {range}
+      </span>
+    </div>
     {/* The svg is decorative: every number it draws is also published in the table below, which is the
         accessible equivalent. Colour is never the only carrier of identity, since each row names its
         agent and its count. */}
@@ -55,7 +65,9 @@ export function CompletionChart({ series, colors = {}, titles = {}, emptyMessage
             y2={y}
             vectorEffect="non-scaling-stroke"
           />
-          <text className={styles.tick} x={geometry.plot.left - 8} y={y + 3} textAnchor="end">{tick}</text>
+          {labelled.has(tick)
+            ? <text className={styles.tick} x={geometry.plot.left - 8} y={y + 3} textAnchor="end">{tick}</text>
+            : null}
         </g>;
       })}
       {geometry.lines.map((line) => <g
@@ -77,12 +89,13 @@ export function CompletionChart({ series, colors = {}, titles = {}, emptyMessage
         : <><span>{dayLabel(first)}</span><span>{dayLabel(last)}</span></>}
     </div>
     <table className={styles.legend}>
-      <caption className={styles.caption}>
-        {series.total} work {series.total === 1 ? "item" : "items"} completed
-        {first === last ? ` on ${dayLabel(last)}` : `, ${dayLabel(first)} to ${dayLabel(last)}`}
+      <caption className={styles.srOnly}>
+        Work completed per agent, {range}
       </caption>
-      <thead>
-        <tr><th scope="col">Agent</th><th scope="col">Completed</th><th scope="col">Share</th></tr>
+      {/* The header still names both columns for a screen reader, which reads the table without the
+          surrounding chart. On screen the two columns are self-evident, so it is not drawn. */}
+      <thead className={styles.srOnly}>
+        <tr><th scope="col">Agent</th><th scope="col">Completed</th></tr>
       </thead>
       <tbody>
         {series.agents.map((agent) => <tr key={agent.agentId}>
@@ -92,10 +105,9 @@ export function CompletionChart({ series, colors = {}, titles = {}, emptyMessage
               style={{ background: agentColor(agent.agentId, colors) }}
               aria-hidden="true"
             />
-            {titles[agent.agentId] || agent.agentId}
+            <span className={styles.name}>{titles[agent.agentId] || agent.agentId}</span>
           </th>
           <td>{agent.total}</td>
-          <td>{series.total ? Math.round((agent.total / series.total) * 100) : 0}%</td>
         </tr>)}
       </tbody>
     </table>

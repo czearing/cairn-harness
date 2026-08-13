@@ -21,11 +21,10 @@ export function ChatVirtualHistory({
   agentId, messages, loading, loadingMore, hasMore, onLoadOlder, renderItem, footer,
 }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
-  const virtualSpace = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const loadingOlder = useRef(false);
-  const count = messages.length + (footer ? 1 : 0);
-  const hasVirtualSpace = !loading || messages.length > 0;
+  const hasFooter = Boolean(footer);
+  const count = messages.length + (hasFooter ? 1 : 0);
   const virtualizer = useVirtualizer({
     count,
     getScrollElement: () => viewport.current,
@@ -39,29 +38,15 @@ export function ChatVirtualHistory({
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
     item.start < (instance.scrollOffset ?? 0);
   useLayoutEffect(() => {
+    following.current = true;
     virtualizer.scrollToEnd({ behavior: "auto" });
-  }, [virtualizer]);
-  useLayoutEffect(() => {
-    const space = virtualSpace.current;
-    if (!space) return;
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const element = viewport.current;
-        if (element && following.current) element.scrollTop = element.scrollHeight;
-      });
-    });
-    observer.observe(space);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [hasVirtualSpace]);
+  }, [agentId, virtualizer]);
+  // `anchorTo: "end"` is the single authority for staying pinned while the streaming footer grows.
+  // A second observer writing scrollTop directly fought it and produced the visible jitter.
   const lastMessageId = messages.at(-1)?.id;
   useEffect(() => {
     if (following.current) virtualizer.scrollToEnd({ behavior: "auto" });
-  }, [lastMessageId, footer, virtualizer]);
+  }, [lastMessageId, hasFooter, virtualizer]);
   useEffect(() => {
     if (!loadingMore) loadingOlder.current = false;
   }, [loadingMore]);
@@ -87,7 +72,7 @@ export function ChatVirtualHistory({
     onTouchStart={() => { following.current = false; }}
   >
     {loading && !messages.length ? <div className={styles.empty}>Loading conversation</div> :
-      <div ref={virtualSpace} className={styles.virtualSpace} style={{ height: virtualizer.getTotalSize() }}>
+      <div className={styles.virtualSpace} style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((item) => <div
           key={item.key}
           ref={virtualizer.measureElement}

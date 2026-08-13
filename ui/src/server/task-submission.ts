@@ -68,6 +68,9 @@ export function persistTaskSubmission(
       );
       created = result.changes === 1;
       validateDashboardMessage(db, taskId, submission);
+      if (submission.topic === "dashboard-message") {
+        markOperatorPriority(db, taskId, dependencies.now());
+      }
       if (!created) {
         const retry = db.prepare(`UPDATE tasks
           SET status='pending',error=NULL,claimed_at=NULL,completed_at=NULL
@@ -106,8 +109,27 @@ function dashboardMessageTaskId(submission: TaskSubmission, createId: () => stri
   return `dashboard-message-${submissionId}`;
 }
 
-function validateDashboardMessage(db: DatabaseSync, taskId: string, submission: TaskSubmission) {
-  const existing = db.prepare("SELECT kind,source,creator,assignee,topic,body FROM tasks WHERE id=?").get(taskId) as {
+// A pending task only preempts a working agent when it carries runtime context, so operator
+// messages record a priority note. Without it a chat message waits for the whole in-flight turn.
+function markOperatorPriority(db: DatabaseSync, taskId: string, createdAt: string) {
+  db.exec(`CREATE TABLE IF NOT EXISTS task_context (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    creator TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`);
+  db.prepare(`INSERT INTO task_context(id,task_id,creator,topic,body,created_at)
+    VALUES(?,?,'dashboard','operator-priority',?,?) ON CONFLICT(id) DO NOTHING`).run(
+    `operator-priority:${taskId}`,
+    taskId,
+    "An operator is waiting in chat. Answer this message before resuming other work.",
+    createdAt,
+  );
+}
+
+function validateDashboardMessage(db: DatabaseSync, taskId: string, submission: TaskSubmission) {  const existing = db.prepare("SELECT kind,source,creator,assignee,topic,body FROM tasks WHERE id=?").get(taskId) as {
     kind: string; source: string; creator: string; assignee: string; topic: string; body: string;
   } | undefined;
   if (!existing

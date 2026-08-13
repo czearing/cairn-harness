@@ -19,9 +19,9 @@ function workspace(seed: (db: DatabaseSync) => void): string {
   return root;
 }
 
-const insert = (db: DatabaseSync, id: string, kind: string, assignee: string, status: string, completedAt: string | null) =>
-  db.prepare(`INSERT INTO tasks(id,kind,source,assignee,status,completed_at)
-    VALUES(?,?,'manual',?,?,?)`).run(id, kind, assignee, status, completedAt);
+const insert = (db: DatabaseSync, id: string, kind: string, assignee: string, status: string, completedAt: string | null, parentId: string | null = null) =>
+  db.prepare(`INSERT INTO tasks(id,parent_id,kind,source,assignee,status,completed_at)
+    VALUES(?,?,?,'manual',?,?,?)`).run(id, parentId, kind, assignee, status, completedAt);
 
 test("a project without a database reports no completions instead of throwing", () => {
   const root = mkdtempSync(path.join(tmpdir(), "harness-analytics-none-"));
@@ -32,7 +32,7 @@ test("a project without a database reports no completions instead of throwing", 
   }
 });
 
-test("only finished root work counts, and every finished shape counts once", () => {
+test("every finished shape counts once, whatever kind it arrived as", () => {
   const root = workspace((db) => {
     insert(db, "done", "root", "alice", "completed", "2026-08-01T12:00:00Z");
     insert(db, "released", "root", "alice", "released", "2026-08-02T12:00:00Z");
@@ -40,16 +40,44 @@ test("only finished root work counts, and every finished shape counts once", () 
     insert(db, "running", "root", "alice", "claimed", null);
     insert(db, "failed", "root", "alice", "failed", "2026-08-04T12:00:00Z");
     insert(db, "cancelled", "root", "alice", "cancelled", "2026-08-04T12:00:00Z");
-    insert(db, "subtask", "delegation", "alice", "completed", "2026-08-04T12:00:00Z");
     insert(db, "chat", "message", "alice", "completed", "2026-08-04T12:00:00Z");
-    insert(db, "orphan", "root", "", "completed", "2026-08-05T12:00:00Z");
+    insert(db, "generated", "generator", "alice", "completed", "2026-08-05T12:00:00Z");
+    insert(db, "orphan", "root", "", "completed", "2026-08-06T12:00:00Z");
   });
   try {
     const events = readCompletionEvents(root);
     assert.deepEqual(events.map((event) => event.completedAt), [
       "2026-08-01T12:00:00Z", "2026-08-02T12:00:00Z", "2026-08-03T12:00:00Z",
+      "2026-08-04T12:00:00Z", "2026-08-05T12:00:00Z",
     ]);
     assert.ok(events.every((event) => event.agentId === "alice"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an agent is not credited twice for subdividing its own assignment", () => {
+  const root = workspace((db) => {
+    insert(db, "parent", "root", "alice", "completed", "2026-08-01T12:00:00Z");
+    insert(db, "own-split", "delegation", "alice", "completed", "2026-08-02T12:00:00Z", "parent");
+  });
+  try {
+    assert.deepEqual(readCompletionEvents(root).map((event) => event.completedAt), [
+      "2026-08-01T12:00:00Z",
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("work delegated to another agent counts for the agent that finished it", () => {
+  const root = workspace((db) => {
+    insert(db, "parent", "root", "alice", "completed", "2026-08-01T12:00:00Z");
+    insert(db, "handed-off", "delegation", "bob", "completed", "2026-08-02T12:00:00Z", "parent");
+  });
+  try {
+    const series = completionSeries(readCompletionEvents(root), "UTC");
+    assert.deepEqual(series.agents.map((agent) => [agent.agentId, agent.total]), [["alice", 1], ["bob", 1]]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

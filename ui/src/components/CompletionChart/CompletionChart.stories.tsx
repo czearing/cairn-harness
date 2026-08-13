@@ -25,8 +25,9 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/82 work items completed/)).toBeVisible();
-    await expect(canvas.getByRole("row", { name: /repo-1-developer 29 35%/ })).toBeVisible();
+    await expect(canvas.getByText("82")).toBeVisible();
+    await expect(canvas.getByText(/items completed · Jul 22/)).toBeVisible();
+    await expect(canvas.getByRole("row", { name: /repo-1-developer 29/ })).toBeVisible();
   },
 };
 
@@ -37,7 +38,7 @@ export const SingleAgent: Story = {
 export const SingleDay: Story = {
   args: { series: completionSeries(events("solo", [["2026-08-05", 1]]), "UTC") },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText(/1 work item completed/)).toBeVisible();
+    await expect(within(canvasElement).getByText(/item completed · Aug 5/)).toBeVisible();
   },
 };
 
