@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 import { Settings2 } from "lucide-react";
 import type { AgentStatus } from "@/lib/types";
+import { isPlainClick } from "@/lib/dashboard-route";
 import { CardSurface } from "../CardSurface/CardSurface";
 import { StatusIndicator } from "../StatusIndicator/StatusIndicator";
 import styles from "./AgentCard.module.css";
@@ -73,7 +74,10 @@ export function AgentCardSurface({
             role="button"
             data-agent-id={agentId}
             aria-label={primaryLabel}
-            onClick={(event) => onPrimary?.(event.currentTarget)}
+            onClick={(event) => {
+              if (isPlainClick(event)) event.preventDefault();
+              onPrimary?.(event.currentTarget);
+            }}
           />
         : <Button
             variant="inherit"
@@ -112,7 +116,10 @@ export function AgentCardSurface({
               role="button"
               data-agent-configure-id={agentId}
               aria-label={settingsLabel}
-              onClick={(event) => onConfigure(event.currentTarget)}
+              onClick={(event) => {
+                if (isPlainClick(event)) event.preventDefault();
+                onConfigure(event.currentTarget);
+              }}
             >
               <Settings2 size={15} aria-hidden="true" />
             </Link>

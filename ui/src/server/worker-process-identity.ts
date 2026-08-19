@@ -24,6 +24,48 @@ const identityProbeTimeoutMs = 20_000;
 const identityProbeAttempts = 2;
 const windowsIdentityOperationTimeoutSec = 10;
 const identityCacheMs = 30_000;
+// Every Windows probe below shells out to PowerShell, and spawnSync blocks the whole Node
+// event loop -- measured at ~800ms for the CIM queries and ~350ms for Get-Process. Callers
+// such as findRunningWorkerProcess run one probe per pid, so a single reconcile tick stalled
+// every in-flight HTTP request for seconds. A process's creation time and command line are
+// immutable for the life of its pid, so the results are cached per pid; liveness is rechecked
+// with the free process.kill(pid, 0) probe and a TTL bounds staleness from pid reuse.
+// Positive results are revalidated on every read with the free kill(pid, 0) liveness probe, so
+// a long TTL is safe: the cached identity can only go stale if the OS recycles the same pid to
+// a new live process, and the record signature check still guards ownership in that case.
+const processProbeCacheMs = 300_000;
+const pidListCacheMs = 5_000;
+// Next re-instantiates server modules across dev compilations and route handlers, so a plain
+// module-level Map is silently recreated and never serves a hit. Anchoring the caches on
+// globalThis keeps one instance per process, which is what makes the probe caching effective.
+interface ProcessProbeCaches {
+  identity: Map<number, { value: ProcessIdentity | null; at: number }>;
+  pidList?: { value: number[]; at: number };
+}
+const probeCacheKey = Symbol.for("cairn-harness.process-probe-cache");
+const probeGlobal = globalThis as unknown as Record<symbol, ProcessProbeCaches | undefined>;
+probeGlobal[probeCacheKey] ||= { identity: new Map() };
+const probeCaches = probeGlobal[probeCacheKey] as ProcessProbeCaches;
+const identityCache = probeCaches.identity;
+
+function cachedProcessProbe<T>(pid: number, cache: Map<number, { value: T; at: number }>, read: () => T): T {
+  const hit = cache.get(pid);
+  if (hit && Date.now() - hit.at < processProbeCacheMs) {
+    // A negative result stays valid for the TTL: the pid is gone and cannot come back as the
+    // same process. A positive result is revalidated with the free liveness probe.
+    if (hit.value === null || processIsAlive(pid)) return hit.value;
+    cache.delete(pid);
+  }
+  const value = read();
+  cache.set(pid, { value, at: Date.now() });
+  if (cache.size > 256) for (const key of cache.keys()) { if (!processIsAlive(key)) cache.delete(key); }
+  return value;
+}
+
+export function clearProcessProbeCaches() {
+  identityCache.clear();
+  probeCaches.pidList = undefined;
+}
 
 export function ownsWorkerProcess(record: unknown, readIdentity: IdentityReader = readProcessIdentity): record is WorkerRecord {
   if (!isWorkerRecord(record)) return false;
@@ -111,13 +153,19 @@ export function withOwnedWorker(
 
 export function readProcessIdentity(pid: number): ProcessIdentity | null {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
-  try {
-    if (process.platform === "linux") return readLinuxIdentity(pid);
-    if (process.platform === "win32") return readWindowsIdentity(pid);
-    return readPsIdentity(pid);
-  } catch {
-    return null;
-  }
+  // A dead pid has no identity, and the free kill(pid, 0) probe already proves that. Skipping
+  // the shell-out here is what removes the recurring multi-second event-loop stalls: stale
+  // worker records point at exited pids, and each one previously cost a PowerShell spawn.
+  if (!processIsAlive(pid)) return null;
+  return cachedProcessProbe(pid, identityCache, () => {
+    try {
+      if (process.platform === "linux") return readLinuxIdentity(pid);
+      if (process.platform === "win32") return readWindowsIdentity(pid);
+      return readPsIdentity(pid);
+    } catch {
+      return null;
+    }
+  });
 }
 
 /**
@@ -126,13 +174,18 @@ export function readProcessIdentity(pid: number): ProcessIdentity | null {
  * loop that is already alive before deciding to spawn another one.
  */
 function listCairnHarnessProcessIds(): number[] {
+  const hit = probeCaches.pidList;
+  if (hit && Date.now() - hit.at < pidListCacheMs) return hit.value;
+  let value: number[];
   try {
-    if (process.platform === "linux") return listLinuxCairnHarnessProcessIds();
-    if (process.platform === "win32") return listWindowsCairnHarnessProcessIds();
-    return listPsCairnHarnessProcessIds();
+    if (process.platform === "linux") value = listLinuxCairnHarnessProcessIds();
+    else if (process.platform === "win32") value = listWindowsCairnHarnessProcessIds();
+    else value = listPsCairnHarnessProcessIds();
   } catch {
-    return [];
+    value = [];
   }
+  probeCaches.pidList = { value, at: Date.now() };
+  return value;
 }
 
 function listLinuxCairnHarnessProcessIds(): number[] {
@@ -230,21 +283,18 @@ function processIsAlive(pid: number) {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // EPERM means the process exists but belongs to another user, which still counts as alive.
+    return (error as NodeJS.ErrnoException)?.code === "EPERM";
   }
 }
 
 function readProcessStart(pid: number) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
-  if (process.platform !== "win32") return readProcessIdentity(pid)?.start || null;
-  const script = `$p=Get-Process -Id ${pid} -ErrorAction SilentlyContinue;if($p){$p.StartTime.ToUniversalTime().ToString("o")}`;
-  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: identityProbeTimeoutMs,
-  });
-  return result.status === 0 && result.stdout.trim() ? result.stdout.trim() : null;
+  // Shares the cached identity probe rather than spawning a second PowerShell process for a
+  // value it already carries. sameProcessStart compares with Date.parse, so the CIM local
+  // offset and the Get-Process UTC rendering of the same instant remain equivalent.
+  return readProcessIdentity(pid)?.start || null;
 }
 
 function sameProcessStart(expected: string, actual: string | null) {

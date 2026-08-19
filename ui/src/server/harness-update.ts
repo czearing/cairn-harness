@@ -1,6 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import path from "node:path";
+
+const execFileAsync = promisify(execFile);
 
 // Every machine running the harness keeps ITSELF current: instrumentation.ts polls this on a
 // fixed interval so a human never has to git pull + cargo build + restart by hand on each
@@ -100,16 +103,25 @@ export function fastForwardDecision(inputs: FastForwardInputs): { update: boolea
   return { update: true, status: "updated", reason: "fast-forwarded to origin/master" };
 }
 
-function sh(command: string, args: string[], cwd: string) {
-  const run = spawnSync(command, args, { cwd, encoding: "utf8", windowsHide: true });
-  return { ok: run.status === 0, out: (run.stdout || "").trim(), err: (run.stderr || "").trim() };
+// Runs off the event loop. `git fetch` reaches the network and previously ran through
+// spawnSync, which froze the entire Node process -- every HTTP request, SSE tick and API call
+// stalled for the whole duration of the fetch, measured at over 5s on a slow network. Nothing
+// here needs to be synchronous: runHarnessUpdate is already async.
+async function sh(command: string, args: string[], cwd: string) {
+  try {
+    const run = await execFileAsync(command, args, { cwd, encoding: "utf8", windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
+    return { ok: true, out: (run.stdout || "").trim(), err: (run.stderr || "").trim() };
+  } catch (error) {
+    const failure = error as { stdout?: string; stderr?: string };
+    return { ok: false, out: (failure.stdout || "").trim(), err: (failure.stderr || "").trim() };
+  }
 }
 
 /** Whether path (relative to root) changed between two revisions — used so a UI dependency
  *  install only runs when the lockfile actually moved, instead of on every single update. */
-function pathChanged(root: string, from: string, to: string, relativePath: string): boolean {
+async function pathChanged(root: string, from: string, to: string, relativePath: string): Promise<boolean> {
   if (!from || from === to) return false;
-  return sh("git", ["diff", "--name-only", `${from}..${to}`, "--", relativePath], root).out.length > 0;
+  return (await sh("git", ["diff", "--name-only", `${from}..${to}`, "--", relativePath], root)).out.length > 0;
 }
 
 export async function runHarnessUpdate(options: { root?: string } = {}): Promise<HarnessUpdateResult> {
@@ -117,25 +129,25 @@ export async function runHarnessUpdate(options: { root?: string } = {}): Promise
   if (!existsSync(path.join(root, ".git"))) {
     return { status: "skipped", from: "", to: "", reason: "not a git checkout" };
   }
-  const localHead = sh("git", ["rev-parse", "HEAD"], root).out;
-  const dirty = sh("git", ["status", "--porcelain", "--untracked-files=no"], root).out.length > 0;
-  const fetch = sh("git", ["fetch", "--quiet", "origin", "master"], root);
+  const localHead = (await sh("git", ["rev-parse", "HEAD"], root)).out;
+  const dirty = (await sh("git", ["status", "--porcelain", "--untracked-files=no"], root)).out.length > 0;
+  const fetch = await sh("git", ["fetch", "--quiet", "origin", "master"], root);
   if (!fetch.ok) {
     return { status: "failed", from: localHead, to: "", reason: `fetch failed: ${fetch.err.split("\n")[0] || ""}` };
   }
-  const remoteHead = sh("git", ["rev-parse", "FETCH_HEAD"], root).out;
+  const remoteHead = (await sh("git", ["rev-parse", "FETCH_HEAD"], root)).out;
   const decision = fastForwardDecision({
     gitCheckout: true,
     dirty,
     localHead,
     remoteHead,
-    remoteIsDescendant: sh("git", ["merge-base", "--is-ancestor", localHead, remoteHead], root).ok,
+    remoteIsDescendant: (await sh("git", ["merge-base", "--is-ancestor", localHead, remoteHead], root)).ok,
   });
   if (!decision.update) {
     return { status: decision.status, from: localHead, to: remoteHead, reason: decision.reason };
   }
 
-  const uiDependenciesChanged = pathChanged(root, localHead, remoteHead, "ui/package-lock.json");
+  const uiDependenciesChanged = await pathChanged(root, localHead, remoteHead, "ui/package-lock.json");
   // Loaded lazily and only on this branch: the supervisor module's own local imports rely on
   // Next.js's bundler for extensionless resolution, so keeping this out of harness-update's
   // top-level imports means the "current"/"skipped"/"not a repo" paths above stay resolvable
@@ -145,16 +157,16 @@ export async function runHarnessUpdate(options: { root?: string } = {}): Promise
   try {
     stopAllProjects();
     stopped = true;
-    const merge = sh("git", ["merge", "--ff-only", remoteHead], root);
+    const merge = await sh("git", ["merge", "--ff-only", remoteHead], root);
     if (!merge.ok) {
       return { status: "failed", from: localHead, to: remoteHead, reason: `fast-forward failed: ${merge.err.split("\n")[0] || ""}` };
     }
-    const build = sh("cargo", ["build", "--release"], root);
+    const build = await sh("cargo", ["build", "--release"], root);
     if (!build.ok) {
       return { status: "failed", from: localHead, to: remoteHead, reason: `build failed: ${build.err.trim().split("\n").slice(-1)[0] || ""}` };
     }
     if (uiDependenciesChanged) {
-      const install = sh("npm", ["ci"], path.join(root, "ui"));
+      const install = await sh("npm", ["ci"], path.join(root, "ui"));
       if (!install.ok) {
         return { status: "failed", from: localHead, to: remoteHead, reason: `npm ci failed: ${install.err.trim().split("\n").slice(-1)[0] || ""}` };
       }
@@ -184,8 +196,8 @@ export function recordAutoUpdateResult(statePath: string, result: HarnessUpdateR
 
 /** Poll entry point: called every RETRY_MS from instrumentation.ts so a backoff retry is never
  *  missed, but real git/build work only happens once autoUpdateDue() says a check is actually
- *  due. Runs synchronously in the same Node process — no subprocess to spawn here, since the UI
- *  server is already the always-on process on each machine. */
+ *  due. Runs in the same Node process as the UI server, but every git/build command is spawned
+ *  asynchronously so a slow network fetch never blocks the event loop and stalls the UI. */
 export async function maybeCheckForHarnessUpdate(options: { root?: string; statePath?: string } = {}, now = Date.now()): Promise<HarnessUpdateResult | null> {
   const root = options.root || harnessRepoRoot();
   const statePath = options.statePath || defaultAutoUpdateStatePath(root);

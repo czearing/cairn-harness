@@ -64,6 +64,16 @@ export function projectIdForRoute(route?: DashboardRoute) {
   return route && "projectId" in route ? route.projectId : undefined;
 }
 
+// Dashboard routes are overlays rendered from client state, so a plain left-click is handled
+// by the dashboard's own navigation. Modified clicks must keep the browser default, which is
+// why these controls still carry a real href.
+export function isPlainClick(event: {
+  button: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; defaultPrevented: boolean;
+}) {
+  return !event.defaultPrevented && event.button === 0
+    && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
+
 function isProjectSettingsSection(value: string): value is ProjectSettingsSection {
   return value === "appearance" || value === "workflow" || value === "ideas";
 }

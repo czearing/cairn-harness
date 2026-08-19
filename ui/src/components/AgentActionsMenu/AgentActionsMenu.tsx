@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Eraser, Pause, Play, Settings2, Trash2 } from "lucide-react";
 import { Button } from "@/components/Button/Button";
 import type { Agent } from "@/lib/types";
+import { isPlainClick } from "@/lib/dashboard-route";
 import { OverlayPortal } from "../OverlayPortal/OverlayPortal";
 import { agentDeletionBlockers, agentDeletionConsequence } from "../AgentWorkspace/deletion-messages";
 import type { AgentDeletionPreview } from "../AgentWorkspace/agent-workspace-types";
@@ -175,6 +176,7 @@ export function AgentActionsMenu({
           role="menuitem"
           href={settingsHref}
           onClick={(event) => {
+            if (isPlainClick(event)) event.preventDefault();
             onSettings?.(event.currentTarget);
             close.current();
           }}

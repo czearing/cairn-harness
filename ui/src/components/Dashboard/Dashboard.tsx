@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import type { Agent, HealthState, ModelSettings, Project } from "@/lib/types";
 import { dashboardHref, parseDashboardPath, projectIdForRoute, type DashboardRoute } from "@/lib/dashboard-route";
@@ -41,16 +41,25 @@ const IdeaAgentsDialog = dynamic(() => import("../CreationDialogs/CreationDialog
 const fallbackRefreshInterval = 2_000;
 const routeFocusKey = "harness-route-focus";
 export function Dashboard({ initialProjects, initialSelectedProject, initialDashboardLayout, initialDraftHeight, initialPathname, workspaceRoot }: { initialProjects: Project[]; initialSelectedProject?: string; initialDashboardLayout?: string; initialDraftHeight?: number; initialPathname: string; workspaceRoot: string }) {
-  const pathname = usePathname() || initialPathname;
-  const router = useRouter();
-  const [, startRouteTransition] = useTransition();
-  // Overlay routes render entirely from client state, but every dashboard page is
-  // force-dynamic, so Next cannot prefetch them and each click would otherwise wait for a
-  // server roundtrip. Painting the requested route immediately keeps interaction latency
-  // independent of server load; the URL catches up in the background. The request is tied
-  // to the pathname it was made from, so it stops applying once the router lands.
-  const [requestedRoute, setRequestedRoute] = useState<{ href: string; from: string }>();
-  const activePathname = requestedRoute?.from === pathname ? requestedRoute.href : pathname;
+  const routerPathname = usePathname() || initialPathname;
+  // Overlay routes render entirely from client state, so a server render buys nothing. Every
+  // dashboard page is force-dynamic, so router.push spent a full RSC roundtrip (104KB, and
+  // seconds under load) purely to change the URL. The History API changes the URL with no
+  // server contact, but usePathname does not react to pushState, so the client owns the
+  // authoritative path and re-syncs from the router and from popstate (back/forward).
+  const [clientPathname, setClientPathname] = useState(initialPathname);
+  const [seenRouterPathname, setSeenRouterPathname] = useState(routerPathname);
+  if (seenRouterPathname !== routerPathname) {
+    setSeenRouterPathname(routerPathname);
+    setClientPathname(routerPathname);
+  }
+  useEffect(() => {
+    const onPop = () => setClientPathname(window.location.pathname);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  const pathname = clientPathname;
+  const activePathname = pathname;
   const route = parseDashboardPath(activePathname) || { kind: "root" };
   const routeProjectId = projectIdForRoute(route);
   const { data = initialProjects, error: projectError, mutate } = useSWR<Project[]>(
@@ -169,13 +178,10 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
   const refreshProjects = () => { void mutate().catch(() => undefined); }; const refreshHealth = () => { void mutateHealth().catch(() => undefined); };
   function navigate(next: Exclude<DashboardRoute, { kind: "root" }>, replace = false) {
     const href = dashboardHref(next);
-    // Always replace the pending request: navigating back to the URL the router is already
-    // on must clear a still-pending request rather than let it keep overriding the route.
-    setRequestedRoute(href === pathname ? undefined : { href, from: pathname });
-    startRouteTransition(() => {
-      if (replace) router.replace(href);
-      else router.push(href);
-    });
+    if (href === pathname) return;
+    if (replace) window.history.replaceState(null, "", href);
+    else window.history.pushState(null, "", href);
+    setClientPathname(href);
   }
   function projectRoute(projectId = project?.id) {
     return projectId ? { kind: "project", projectId, view: "overview" } as const : { kind: "new-project" } as const;
@@ -339,11 +345,13 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
         avatars={avatars}
         workspaceView={workspaceView}
         onWorkspaceView={(view) => navigate({ kind: "project", projectId: project.id, view })}
-        onAgent={(_agent, returnFocus) => {
+        onAgent={(agent, returnFocus) => {
           chatReturnFocus.current = returnFocus;
+          navigate({ kind: "conversation", projectId: project.id, agentId: agent.id });
         }}
-        onConfigureAgent={(_agent, returnFocus) => {
+        onConfigureAgent={(agent, returnFocus) => {
           configurationReturnFocus.current = returnFocus;
+          navigate({ kind: "agent-settings", projectId: project.id, agentId: agent.id });
         }}
         onPrefetch={(agent) => prefetchConversation(project.id, agent.id)}
         onAgentPauseToggle={async (agent) => {
