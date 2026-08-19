@@ -21,7 +21,7 @@ export function ChatVirtualHistory({
   agentId, messages, loading, loadingMore, hasMore, onLoadOlder, renderItem, footer,
 }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
-  const following = useRef(true);
+  const pinnedAgent = useRef<string>(undefined);
   const loadingOlder = useRef(false);
   const hasFooter = Boolean(footer);
   const count = messages.length + (hasFooter ? 1 : 0);
@@ -31,30 +31,28 @@ export function ChatVirtualHistory({
     estimateSize: (index) => index < messages.length ? estimate(messages, index) : 72,
     getItemKey: (index) => index < messages.length ? messages[index].id : "conversation-footer",
     overscan: 14,
+    // End anchoring is the single scroll authority, exactly as the TanStack chat guide
+    // prescribes: it pins streaming growth, follows appends only when the reader is already
+    // at the latest message, and holds the viewport steady while older history prepends.
+    // Tracking "am I following?" by hand, calling scrollToEnd on every new message, or
+    // overriding the size-change adjustment all fight it, and that fight was the jitter.
     anchorTo: "end",
-    followOnAppend: "auto",
+    followOnAppend: true,
+    scrollEndThreshold: 80,
     useAnimationFrameWithResizeObserver: true,
   });
-  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
-    item.start < (instance.scrollOffset ?? 0);
+  // Start each conversation at the latest message, once its first page actually exists.
   useLayoutEffect(() => {
-    following.current = true;
+    if (pinnedAgent.current === agentId || !count) return;
+    pinnedAgent.current = agentId;
     virtualizer.scrollToEnd({ behavior: "auto" });
-  }, [agentId, virtualizer]);
-  // `anchorTo: "end"` is the single authority for staying pinned while the streaming footer grows.
-  // A second observer writing scrollTop directly fought it and produced the visible jitter.
-  const lastMessageId = messages.at(-1)?.id;
-  useEffect(() => {
-    if (following.current) virtualizer.scrollToEnd({ behavior: "auto" });
-  }, [lastMessageId, hasFooter, virtualizer]);
+  }, [agentId, count, virtualizer]);
   useEffect(() => {
     if (!loadingMore) loadingOlder.current = false;
   }, [loadingMore]);
   function onScroll() {
     const element = viewport.current;
     if (!element) return;
-    const gap = element.scrollHeight - element.clientHeight - element.scrollTop;
-    if (gap <= 2) following.current = true;
     if (element.scrollTop <= 240 && hasMore && !loadingMore && !loadingOlder.current) {
       loadingOlder.current = true;
       onLoadOlder?.();
@@ -67,9 +65,6 @@ export function ChatVirtualHistory({
     tabIndex={0}
     aria-label={`Conversation history with ${agentId}`}
     onScroll={onScroll}
-    onWheel={(event) => { if (event.deltaY < 0) following.current = false; }}
-    onPointerDown={(event) => { if (event.target === event.currentTarget) following.current = false; }}
-    onTouchStart={() => { following.current = false; }}
   >
     {loading && !messages.length ? <div className={styles.empty}>Loading conversation</div> :
       <div className={styles.virtualSpace} style={{ height: virtualizer.getTotalSize() }}>
@@ -89,10 +84,10 @@ export function ChatVirtualHistory({
 function estimate(messages: ChatMessage[], index: number) {
   const message = messages[index];
   if (message.kind === "tool") {
-    if (sameToolRun(message, messages[index + 1])) return 1;
-    let start = index;
-    while (start > 0 && sameToolRun(messages[start - 1], message)) start -= 1;
-    const run = messages.slice(start, index + 1);
+    if (sameToolRun(messages[index - 1], message)) return 1;
+    let end = index;
+    while (end + 1 < messages.length && sameToolRun(messages[end], messages[end + 1])) end += 1;
+    const run = messages.slice(index, end + 1);
     if (!run.some((item) => item.status === "working")) return 58;
     return 58 + run.reduce((total, item) => total + 42 + bodyHeight(item.body), 0);
   }

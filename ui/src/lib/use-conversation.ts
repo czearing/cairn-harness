@@ -13,7 +13,10 @@ const fetcher = (url: string) => fetch(url).then((response) => {
 const firstPages = new ConversationPrefetchCache<ConversationPage>();
 const pendingPages = new InFlightRequests<ConversationPage>();
 const optimisticMessages = new Map<string, ChatMessage[]>();
-const CONVERSATION_SCROLLBACK_LIMIT = 20_000;
+// Opening a conversation used to request the entire transcript in one page. On long-running
+// agents that is thousands of messages and megabytes per open, and every live event refetched
+// the whole thing again. Pages are bounded and older history is prepended on demand instead.
+const CONVERSATION_PAGE_LIMIT = 100;
 const FOCUSED_CONVERSATION_PAGE_LIMIT = 100;
 
 export function prefetchConversation(projectId: string, agentId: string) {
@@ -27,11 +30,10 @@ export function useConversation(projectId: string, agentId: string, focusId?: st
   const latestUrl = firstPageUrl(projectId, agentId);
   const [, setOptimisticVersion] = useState(0);
   function getKey(page: number, previous?: ConversationPage) {
-    if (!focusId && page > 0) return null;
     if (page > 0 && !previous?.hasMore) return null;
     const query = new URLSearchParams({
       agent: agentId,
-      limit: String(focusId ? FOCUSED_CONVERSATION_PAGE_LIMIT : CONVERSATION_SCROLLBACK_LIMIT),
+      limit: String(focusId ? FOCUSED_CONVERSATION_PAGE_LIMIT : CONVERSATION_PAGE_LIMIT),
     });
     if (page === 0 && focusId) query.set("focus", focusId);
     if (page > 0 && previous?.nextBefore) query.set("before", previous.nextBefore);
@@ -53,7 +55,7 @@ export function useConversation(projectId: string, agentId: string, focusId?: st
   const groupBreakIds = pages.slice(0, -1).map((page) => page.items[0]?.id).filter((id): id is string => Boolean(id));
   const olderCount = pages.slice(1).reduce((total, page) => total + page.items.length, 0);
   function loadOlder() {
-    if (focusId && pages.at(-1)?.hasMore && !isValidating) void setSize((size) => size + 1);
+    if (pages.at(-1)?.hasMore && !isValidating) void setSize((size) => size + 1);
   }
   function refreshLatest() {
     return mutate((current) => current, {
@@ -67,7 +69,7 @@ export function useConversation(projectId: string, agentId: string, focusId?: st
     return Promise.resolve();
   }
 
-  return { messages, groupBreakIds, olderCount, hasMore: Boolean(focusId && pages.at(-1)?.hasMore), isLoading: pages.length === 0 && !error, isValidating, error, loadOlder, mutate, refreshLatest, upsertLatest };
+  return { messages, groupBreakIds, olderCount, hasMore: Boolean(pages.at(-1)?.hasMore), isLoading: pages.length === 0 && !error, isValidating, error, loadOlder, mutate, refreshLatest, upsertLatest };
 }
 
 function sharedFetch(url: string) {
@@ -77,7 +79,7 @@ function sharedFetch(url: string) {
 function firstPageUrl(projectId: string, agentId: string, focusId?: string) {
   const query = new URLSearchParams({
     agent: agentId,
-    limit: String(focusId ? FOCUSED_CONVERSATION_PAGE_LIMIT : CONVERSATION_SCROLLBACK_LIMIT),
+    limit: String(focusId ? FOCUSED_CONVERSATION_PAGE_LIMIT : CONVERSATION_PAGE_LIMIT),
   });
   if (focusId) query.set("focus", focusId);
   return `/api/projects/${projectId}/messages?${query}`;
