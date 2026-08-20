@@ -74,6 +74,8 @@ export function AgentCardSurface({
             role="button"
             data-agent-id={agentId}
             aria-label={primaryLabel}
+            onPointerEnter={onPrefetch}
+            onFocus={onPrefetch}
             onClick={(event) => {
               if (isPlainClick(event)) event.preventDefault();
               onPrimary?.(event.currentTarget);

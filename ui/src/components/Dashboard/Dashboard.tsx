@@ -40,6 +40,17 @@ const IdeaAgentsDialog = dynamic(() => import("../CreationDialogs/CreationDialog
 
 const fallbackRefreshInterval = 2_000;
 const routeFocusKey = "harness-route-focus";
+
+// The conversation overlay is code-split, so opening a chat pays a chunk fetch before the
+// drawer can even mount and render the transcript we already downloaded. Requesting the same
+// module ahead of time lets the bundler resolve it from cache when dynamic() awaits it.
+let conversationOverlayWarmed = false;
+function warmConversationOverlay() {
+  if (conversationOverlayWarmed) return;
+  conversationOverlayWarmed = true;
+  void import("../ConversationDrawer/ConversationDrawer").catch(() => { conversationOverlayWarmed = false; });
+}
+
 export function Dashboard({ initialProjects, initialSelectedProject, initialDashboardLayout, initialDraftHeight, initialPathname, workspaceRoot }: { initialProjects: Project[]; initialSelectedProject?: string; initialDashboardLayout?: string; initialDraftHeight?: number; initialPathname: string; workspaceRoot: string }) {
   const routerPathname = usePathname() || initialPathname;
   // Overlay routes render entirely from client state, so a server render buys nothing. Every
@@ -347,13 +358,21 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
         onWorkspaceView={(view) => navigate({ kind: "project", projectId: project.id, view })}
         onAgent={(agent, returnFocus) => {
           chatReturnFocus.current = returnFocus;
+          // Start the transcript request now rather than after the lazily-loaded overlay chunk
+          // mounts the drawer, so the network round trip overlaps the chunk load instead of
+          // queueing behind it. It is a no-op when hovering already primed the cache.
+          prefetchConversation(project.id, agent.id);
+          warmConversationOverlay();
           navigate({ kind: "conversation", projectId: project.id, agentId: agent.id });
         }}
         onConfigureAgent={(agent, returnFocus) => {
           configurationReturnFocus.current = returnFocus;
           navigate({ kind: "agent-settings", projectId: project.id, agentId: agent.id });
         }}
-        onPrefetch={(agent) => prefetchConversation(project.id, agent.id)}
+        onPrefetch={(agent) => {
+          prefetchConversation(project.id, agent.id);
+          warmConversationOverlay();
+        }}
         onAgentPauseToggle={async (agent) => {
           await writeCardAgent(agent, "PATCH", { action: agent.status === "paused" ? "resume" : "pause" });
           await mutate();

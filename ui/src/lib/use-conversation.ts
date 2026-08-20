@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import useSWRInfinite from "swr/infinite";
+import { preload } from "swr";
 import type { ChatMessage, ConversationPage } from "./types";
 import { ConversationPrefetchCache, InFlightRequests, isConversationFirstPage } from "./conversation-prefetch-cache";
 import { reconcileOptimisticMessages } from "./conversation-reconciliation";
@@ -16,13 +17,20 @@ const optimisticMessages = new Map<string, ChatMessage[]>();
 // Opening a conversation used to request the entire transcript in one page. On long-running
 // agents that is thousands of messages and megabytes per open, and every live event refetched
 // the whole thing again. Pages are bounded and older history is prepended on demand instead.
-const CONVERSATION_PAGE_LIMIT = 100;
+// The first page is deliberately small: measured against a 3k-message transcript, limit=30
+// answers in ~120ms/36KB where limit=100 needs ~400ms/433KB, and 30 still fills several
+// screens. Focused links keep a larger page because they must show context around the target.
+const CONVERSATION_PAGE_LIMIT = 30;
 const FOCUSED_CONVERSATION_PAGE_LIMIT = 100;
 
 export function prefetchConversation(projectId: string, agentId: string) {
   const url = firstPageUrl(projectId, agentId);
   if (firstPages.get(url) || pendingPages.has(url)) return;
-  void sharedFetch(url).then((page) => firstPages.set(url, page));
+  // firstPages gives the drawer a synchronous first paint, but SWR cannot see that cache, so
+  // its mount revalidation used to refetch the page we had just downloaded. preload registers
+  // the same request with SWR itself, which consumes the pending/settled promise instead of
+  // issuing a second one, collapsing the open into a single network request.
+  void preload(url, sharedFetch).then((page) => firstPages.set(url, page)).catch(() => undefined);
 }
 
 export function useConversation(projectId: string, agentId: string, focusId?: string) {
