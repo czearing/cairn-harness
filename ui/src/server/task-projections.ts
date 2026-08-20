@@ -1,6 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { QueueItem } from "@/lib/types";
+import { collapseBody } from "../lib/work-body.ts";
 import { taskStatusPresentation } from "../lib/task-status.ts";
+
+// Task bodies reach 12KB and the dashboard refetches every project on each live event, but the
+// only thing rendered from a body is a two-line clamped summary. Sending a bounded preview
+// instead of the document keeps every pixel identical while removing the bulk of the payload.
+const bodyPreviewLimit = 400;
 
 export function readDelegatedActions(db: DatabaseSync, paused: boolean): QueueItem[] {
   return db.prepare(`SELECT child.id,child.parent_id,child.kind,child.body,child.status,
@@ -39,7 +45,7 @@ function taskProjection(row: Record<string, unknown>, taskKind: "root" | "delega
     parentId,
     accountableId: row.creator ? String(row.creator) : undefined,
     executorId,
-    content,
+    bodyPreview: collapseBody(content).slice(0, bodyPreviewLimit),
     context: taskKind === "delegation"
       ? parent ? `For ${parent}` : parentId ? `Missing parent ${parentId}` : "Project delegation"
       : undefined,

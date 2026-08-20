@@ -53,6 +53,7 @@ export interface QueueItem {
   accountableId?: string;
   executorId?: string;
   content?: string;
+  bodyPreview?: string;
   agentId?: string;
   chatId?: string;
   context?: string;

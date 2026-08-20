@@ -6,6 +6,18 @@ export function reconcileOptimisticMessages(serverMessages: ChatMessage[], optim
     const overlay = optimistic.find((candidate) => sameSubmission(candidate, message));
     if (overlay) unresolved.delete(overlay.submissionId || overlay.id);
   }
+  // The conversation is paged, so a message sent earlier eventually falls outside the newest
+  // page. Its overlay would then never meet its server copy again and got spliced back in by
+  // timestamp, putting the user's own message at the top of the window as if it had just been
+  // resent. Once the server's oldest visible message is newer than an overlay, the server has
+  // demonstrably moved past it, so the overlay has done its job. A message that failed to send
+  // has no server copy to wait for and must survive so the user can still retry it.
+  const horizon = serverMessages[0]?.timestamp;
+  if (horizon) {
+    for (const [key, message] of unresolved) {
+      if (message.timestamp < horizon && message.uiStatus !== "failed") unresolved.delete(key);
+    }
+  }
   const pending = [...unresolved.values()];
   return {
     messages: merge(serverMessages, pending),

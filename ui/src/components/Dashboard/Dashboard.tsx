@@ -44,6 +44,10 @@ const routeFocusKey = "harness-route-focus";
 // The conversation overlay is code-split, so opening a chat pays a chunk fetch before the
 // drawer can even mount and render the transcript we already downloaded. Requesting the same
 // module ahead of time lets the bundler resolve it from cache when dynamic() awaits it.
+// Warming at hover or click still leaves the very first open waiting on that download, which
+// profiled as ~1.9s of idle time, so the modules are also requested during browser idle once
+// the dashboard is interactive. That is the RAIL "idle" budget: do non-critical work early so
+// the interaction itself never pays for it.
 let conversationOverlayWarmed = false;
 function warmConversationOverlay() {
   if (conversationOverlayWarmed) return;
@@ -51,7 +55,20 @@ function warmConversationOverlay() {
   void import("../ConversationDrawer/ConversationDrawer").catch(() => { conversationOverlayWarmed = false; });
 }
 
+function useWarmOverlaysWhenIdle() {
+  useEffect(() => {
+    const idle = window.requestIdleCallback;
+    if (!idle) {
+      const timer = window.setTimeout(warmConversationOverlay, 1_000);
+      return () => window.clearTimeout(timer);
+    }
+    const handle = idle(() => warmConversationOverlay(), { timeout: 3_000 });
+    return () => window.cancelIdleCallback(handle);
+  }, []);
+}
+
 export function Dashboard({ initialProjects, initialSelectedProject, initialDashboardLayout, initialDraftHeight, initialPathname, workspaceRoot }: { initialProjects: Project[]; initialSelectedProject?: string; initialDashboardLayout?: string; initialDraftHeight?: number; initialPathname: string; workspaceRoot: string }) {
+  useWarmOverlaysWhenIdle();
   const routerPathname = usePathname() || initialPathname;
   // Overlay routes render entirely from client state, so a server render buys nothing. Every
   // dashboard page is force-dynamic, so router.push spent a full RSC roundtrip (104KB, and

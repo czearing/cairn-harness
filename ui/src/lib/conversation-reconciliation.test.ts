@@ -46,6 +46,61 @@ test("only unresolved optimistic messages survive serial reconciliation", () => 
   assert.deepEqual(result.unresolved, [second]);
 });
 
+test("an acknowledged message that scrolled out of the page window does not resurface", () => {
+  // The conversation is paged, so a message the user sent earlier can fall outside the newest
+  // page while its optimistic overlay is still held. Splicing that overlay back in by timestamp
+  // put the user's own message back at the top of the window as if it had just been resent.
+  const sent = message({
+    id: "task:dashboard-message-old",
+    submissionId: "old",
+    timestamp: "2026-07-28T21:00:00.000Z",
+    deliveryState: "queued",
+  });
+  const window = [
+    message({ id: "event:session:9", sender: "reviewer", kind: "assistant", timestamp: "2026-07-28T22:00:00.000Z" }),
+    message({ id: "event:session:10", sender: "reviewer", kind: "assistant", timestamp: "2026-07-28T22:00:01.000Z" }),
+  ];
+
+  const result = reconcileOptimisticMessages(window, [sent]);
+
+  assert.deepEqual(result.messages, window);
+  assert.deepEqual(result.unresolved, []);
+});
+
+test("a message still awaiting its server copy is kept in place", () => {
+  const pending = message({
+    id: "task:dashboard-message-new",
+    submissionId: "new",
+    timestamp: "2026-07-28T22:00:02.000Z",
+  });
+  const window = [
+    message({ id: "event:session:9", sender: "reviewer", kind: "assistant", timestamp: "2026-07-28T22:00:00.000Z" }),
+  ];
+
+  const result = reconcileOptimisticMessages(window, [pending]);
+
+  assert.deepEqual(result.messages, [...window, pending]);
+  assert.deepEqual(result.unresolved, [pending]);
+});
+
+test("a failed message is kept even once the window moves past it", () => {
+  const failed = message({
+    id: "task:dashboard-message-bad",
+    submissionId: "bad",
+    timestamp: "2026-07-28T21:00:00.000Z",
+    uiStatus: "failed",
+    deliveryState: "failed",
+  });
+  const window = [
+    message({ id: "event:session:9", sender: "reviewer", kind: "assistant", timestamp: "2026-07-28T22:00:00.000Z" }),
+  ];
+
+  const result = reconcileOptimisticMessages(window, [failed]);
+
+  assert.deepEqual(result.unresolved, [failed]);
+  assert.equal(result.messages[0], failed);
+});
+
 function message(overrides: Partial<ChatMessage>): ChatMessage {
   return {
     id: "message",
