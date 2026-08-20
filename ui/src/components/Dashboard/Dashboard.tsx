@@ -13,6 +13,9 @@ import { useSelectedProject } from "@/lib/use-selected-project";
 import { useProjectEvents } from "@/lib/use-project-events";
 import { prefetchConversation } from "@/lib/use-conversation";
 import type { AgentWorkspaceHandle } from "../AgentWorkspace/agent-workspace-types";
+import { ActionDrawer } from "../ActionDrawer/ActionDrawer";
+import { AgentWorkspace } from "../AgentWorkspace/AgentWorkspace";
+import { ConversationDrawer } from "../ConversationDrawer/ConversationDrawer";
 import { ActivityRail } from "../ActivityRail/ActivityRail";
 import { EmptyProject } from "../EmptyProject/EmptyProject";
 import type { AgentDraft, ProjectDraft } from "../CreationDialogs/CreationDialogs";
@@ -27,9 +30,6 @@ import { useCoalescedRefresh } from "./use-coalesced-refresh";
 import { useDashboardLayout } from "./use-dashboard-layout";
 import styles from "./Dashboard.module.css";
 
-const ActionDrawer = dynamic(() => import("../ActionDrawer/ActionDrawer").then((module) => module.ActionDrawer), { ssr: false });
-const AgentWorkspace = dynamic(() => import("../AgentWorkspace/AgentWorkspace").then((module) => module.AgentWorkspace));
-const ConversationDrawer = dynamic(() => import("../ConversationDrawer/ConversationDrawer").then((module) => module.ConversationDrawer));
 const IdentityEditor = dynamic(() => import("../AgentIdentityEditor/AgentIdentityEditor").then((module) => module.IdentityEditor));
 const GlobalSettingsForm = dynamic(() => import("../GlobalSettings/GlobalSettings").then((module) => module.GlobalSettingsForm));
 const SystemStatus = dynamic(() => import("../SystemStatus/SystemStatus").then((module) => module.SystemStatus));
@@ -41,34 +41,49 @@ const IdeaAgentsDialog = dynamic(() => import("../CreationDialogs/CreationDialog
 const fallbackRefreshInterval = 2_000;
 const routeFocusKey = "harness-route-focus";
 
-// The conversation overlay is code-split, so opening a chat pays a chunk fetch before the
-// drawer can even mount and render the transcript we already downloaded. Requesting the same
-// module ahead of time lets the bundler resolve it from cache when dynamic() awaits it.
-// Warming at hover or click still leaves the very first open waiting on that download, which
-// profiled as ~1.9s of idle time, so the modules are also requested during browser idle once
-// the dashboard is interactive. That is the RAIL "idle" budget: do non-critical work early so
-// the interaction itself never pays for it.
-let conversationOverlayWarmed = false;
-function warmConversationOverlay() {
-  if (conversationOverlayWarmed) return;
-  conversationOverlayWarmed = true;
-  void import("../ConversationDrawer/ConversationDrawer").catch(() => { conversationOverlayWarmed = false; });
-}
+// The conversation and agent-settings paths are not code-split at all any more. next/dynamic is
+// React.lazy plus Suspense, and React throttles Suspense reveals globally: once a fallback
+// commits, resolved content is withheld until 300ms have elapsed since
+// globalMostRecentFallbackTime (FALLBACK_THROTTLE_MS in react-dom). Measured against a live
+// transcript that made every FIRST open cost far more than every later one - 400ms to 1.7s for a
+// conversation and up to 2.0s for settings, against ~70ms once the boundary had been crossed,
+// because only the first open pays it. ActionDrawer, ConversationDrawer and AgentWorkspace are
+// therefore imported statically: they are needed the instant a user clicks an agent, which is
+// the primary interaction of this tool, and a boundary there buys a smaller first load in
+// exchange for making the main interaction unpredictably slow. They were already downloaded
+// during idle anyway, so the total JavaScript the page fetches is unchanged.
 
-function useWarmOverlaysWhenIdle() {
+// Warm code is not enough for the content to be instant: the drawer would still mount with no
+// messages and paint an empty transcript until the request came back. Hover prefetch only helps
+// a pointer, and never helps the first agent opened from the keyboard or a restored URL. Each
+// first page is ~3KB, so the whole project's transcripts are prefetched one at a time during
+// idle, leaving the click a synchronous cache read. prefetchConversation is a no-op once a
+// conversation is cached or in flight, so this never duplicates hover or click prefetching.
+function useIdlePrefetchedConversations(projectId?: string, agents?: { id: string }[]) {
+  const agentIds = agents?.map((agent) => agent.id).join(",");
   useEffect(() => {
-    const idle = window.requestIdleCallback;
-    if (!idle) {
-      const timer = window.setTimeout(warmConversationOverlay, 1_000);
-      return () => window.clearTimeout(timer);
-    }
-    const handle = idle(() => warmConversationOverlay(), { timeout: 3_000 });
-    return () => window.cancelIdleCallback(handle);
-  }, []);
+    if (!projectId || !agentIds) return;
+    const idle: typeof window.requestIdleCallback | undefined = window.requestIdleCallback;
+    const pending = agentIds.split(",");
+    let cancelled = false;
+    let handle: number | undefined;
+    const step = () => {
+      if (cancelled) return;
+      const agentId = pending.shift();
+      if (!agentId) return;
+      prefetchConversation(projectId, agentId);
+      handle = idle ? idle(step, { timeout: 5_000 }) : window.setTimeout(step, 120);
+    };
+    handle = idle ? idle(step, { timeout: 5_000 }) : window.setTimeout(step, 1_200);
+    return () => {
+      cancelled = true;
+      if (handle === undefined) return;
+      if (typeof idle === "function") window.cancelIdleCallback(handle); else window.clearTimeout(handle);
+    };
+  }, [projectId, agentIds]);
 }
 
 export function Dashboard({ initialProjects, initialSelectedProject, initialDashboardLayout, initialDraftHeight, initialPathname, workspaceRoot }: { initialProjects: Project[]; initialSelectedProject?: string; initialDashboardLayout?: string; initialDraftHeight?: number; initialPathname: string; workspaceRoot: string }) {
-  useWarmOverlaysWhenIdle();
   const routerPathname = usePathname() || initialPathname;
   // Overlay routes render entirely from client state, so a server render buys nothing. Every
   // dashboard page is force-dynamic, so router.push spent a full RSC roundtrip (104KB, and
@@ -142,6 +157,7 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
   const project = data.find((item) => item.id === (routeProjectId || selectedId)) || data[0];
   const chatAgent = project?.id === chat?.projectId ? project.agents.find((agent) => agent.id === chat.agentId) : undefined;
   const configurationAgent = project?.id === configuration?.projectId ? project.agents.find((agent) => agent.id === configuration.agentId) : undefined;
+  useIdlePrefetchedConversations(project?.id, project?.agents);
   useEffect(() => {
     agentConfigurationRevision.current = configurationAgent?.configurationRevision || 0;
     agentMutationQueue.current = Promise.resolve();
@@ -375,11 +391,10 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
         onWorkspaceView={(view) => navigate({ kind: "project", projectId: project.id, view })}
         onAgent={(agent, returnFocus) => {
           chatReturnFocus.current = returnFocus;
-          // Start the transcript request now rather than after the lazily-loaded overlay chunk
-          // mounts the drawer, so the network round trip overlaps the chunk load instead of
-          // queueing behind it. It is a no-op when hovering already primed the cache.
+          // Belt and braces: idle prefetching normally has this conversation cached long before
+          // the click, but a brand new agent, or a click that lands during the first seconds
+          // after load, can still arrive first. It is a no-op once the page is cached.
           prefetchConversation(project.id, agent.id);
-          warmConversationOverlay();
           navigate({ kind: "conversation", projectId: project.id, agentId: agent.id });
         }}
         onConfigureAgent={(agent, returnFocus) => {
@@ -388,7 +403,6 @@ export function Dashboard({ initialProjects, initialSelectedProject, initialDash
         }}
         onPrefetch={(agent) => {
           prefetchConversation(project.id, agent.id);
-          warmConversationOverlay();
         }}
         onAgentPauseToggle={async (agent) => {
           await writeCardAgent(agent, "PATCH", { action: agent.status === "paused" ? "resume" : "pause" });
