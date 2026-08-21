@@ -12,7 +12,11 @@ fn session(home: &std::path::Path, id: &str) -> std::path::PathBuf {
     let path = home.join("session-state").join(id);
     std::fs::create_dir_all(path.join("files").join("target")).unwrap();
     std::fs::write(path.join("events.jsonl"), "{}").unwrap();
-    std::fs::write(path.join("files").join("target").join("build"), vec![0; 512]).unwrap();
+    std::fs::write(
+        path.join("files").join("target").join("build"),
+        vec![0; 512],
+    )
+    .unwrap();
     path
 }
 

@@ -69,3 +69,45 @@ fn session_config_keeps_external_servers_separate_from_embedded_harness_tools() 
             .to_string()
     );
 }
+
+#[test]
+fn harness_tool_grant_is_narrowed_to_the_role() {
+    let worker = |id: &str, leader: &str, delegates: Vec<String>, ideas: Vec<String>| WorkerSpec {
+        id: id.into(),
+        role: id.into(),
+        description: "Role".into(),
+        prompt: "Do.".into(),
+        model: "gpt-5.4-mini".into(),
+        leader: leader.into(),
+        leader_task_limit: 3,
+        idea_agents: ideas,
+        delegate_agents: delegates,
+    };
+
+    assert_eq!(
+        harness_tools(&worker("writer", "lead", Vec::new(), Vec::new())),
+        vec!["message_send", "team_status"]
+    );
+    assert_eq!(
+        harness_tools(&worker("lead", "lead", Vec::new(), Vec::new())),
+        vec![
+            "message_send",
+            "task_create",
+            "task_delegate",
+            "team_status"
+        ]
+    );
+    assert_eq!(
+        harness_tools(&worker("second", "lead", vec!["second".into()], Vec::new())),
+        vec![
+            "message_send",
+            "task_create",
+            "task_delegate",
+            "team_status"
+        ]
+    );
+    assert_eq!(
+        harness_tools(&worker("scout", "lead", Vec::new(), vec!["scout".into()])),
+        vec!["message_send", "task_create", "team_status"]
+    );
+}

@@ -61,23 +61,23 @@ pub(crate) async fn process(ctx: &WorkerContext, task: Assignment) -> Result<()>
     let state = ctx.store.agent(&worker.id).await?;
     let children = ctx.store.terminal_children(&task.id).await?;
     let runtime_context = ctx.store.runtime_context(&task, config.leader()).await?;
-    let prompt = prompt::build(&config, &worker, &task, &children, &runtime_context);
+    let composed = prompt::build(&config, &worker, &task, &children, &runtime_context);
     let requested_session_id = state.session_id;
-    let fresh_session_prompt = if task.is_dashboard_message() {
-        Some(prompt::with_prior_context(
-            &prompt,
-            &ctx.store.agent_context(&worker.id).await?,
-        ))
+    let prior_context = if task.is_dashboard_message() {
+        Some(ctx.store.agent_context(&worker.id).await?)
     } else {
         None
     };
     let (cancel, cancellation) = watch::channel(false);
+    let delivered = crate::models::DeliveredPrompt::default();
+    let fallback_prompt = composed.full();
     let request = RunRequest {
         project_root: config.root.clone(),
         worker,
         session_id: requested_session_id,
-        prompt: prompt.clone(),
-        fresh_session_prompt,
+        composed,
+        prior_context,
+        delivered: delivered.clone(),
         cancellation,
     };
     let started_at = Utc::now().to_rfc3339();
@@ -90,6 +90,9 @@ pub(crate) async fn process(ctx: &WorkerContext, task: Assignment) -> Result<()>
         },
     };
     drop(permit);
+    // turns.prompt must hold the bytes the agent actually received, which is no longer
+    // the composed prompt once unchanged sections are withheld from a live session.
+    let prompt = delivered.get().unwrap_or(fallback_prompt);
     if lease_run.context_interrupted {
         let _ = ctx.store.set_state_after_claim(&task, "idle").await?;
         return Ok(());

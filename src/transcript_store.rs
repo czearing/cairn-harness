@@ -161,10 +161,8 @@ impl Store {
 /// a plain string comparison gets wrong. An unreadable turn timestamp is treated as predating
 /// the reset, because leaking cleared context is the failure the operator asked to prevent.
 fn completed_after(completed_at: Option<&str>, cleared_at: &str) -> bool {
-    let (Some(completed), Some(cleared)) = (
-        completed_at.and_then(instant),
-        instant(cleared_at),
-    ) else {
+    let (Some(completed), Some(cleared)) = (completed_at.and_then(instant), instant(cleared_at))
+    else {
         return false;
     };
     completed > cleared
@@ -238,10 +236,20 @@ mod tests {
         let root = tempdir().unwrap();
         let store = Store::open(&root.path().join("harness.db")).await.unwrap();
         store.register(&worker()).await.unwrap();
-        record(&store, "old", "before the reset", "2026-08-04T20:14:05.112534300+00:00").await;
+        record(
+            &store,
+            "old",
+            "before the reset",
+            "2026-08-04T20:14:05.112534300+00:00",
+        )
+        .await;
 
         assert!(
-            store.agent_context("lead").await.unwrap().contains("before the reset"),
+            store
+                .agent_context("lead")
+                .await
+                .unwrap()
+                .contains("before the reset"),
             "a turn recorded before any reset is replayed"
         );
 
@@ -256,7 +264,13 @@ mod tests {
             "no turn from before the reset may be replayed"
         );
 
-        record(&store, "new", "after the reset", "2026-08-06T09:00:00+00:00").await;
+        record(
+            &store,
+            "new",
+            "after the reset",
+            "2026-08-06T09:00:00+00:00",
+        )
+        .await;
         let context = store.agent_context("lead").await.unwrap();
         assert!(context.contains("after the reset"));
         assert!(!context.contains("before the reset"));
@@ -271,8 +285,20 @@ mod tests {
             .clear_agent_context("lead", "2026-08-05T00:00:00.000Z")
             .await
             .unwrap();
-        record(&store, "middle", "kept for now", "2026-08-06T09:00:00+00:00").await;
-        assert!(store.agent_context("lead").await.unwrap().contains("kept for now"));
+        record(
+            &store,
+            "middle",
+            "kept for now",
+            "2026-08-06T09:00:00+00:00",
+        )
+        .await;
+        assert!(
+            store
+                .agent_context("lead")
+                .await
+                .unwrap()
+                .contains("kept for now")
+        );
 
         store
             .clear_agent_context("lead", "2026-08-07T00:00:00.000Z")
@@ -292,7 +318,13 @@ mod tests {
         let total = MAX_REPLAYED_TURNS + 1;
         for turn in 0..total {
             let completed_at = format!("2026-08-{:02}T00:00:00+00:00", 1 + turn);
-            record(&store, &format!("turn-{turn}"), &format!("body-{turn}"), &completed_at).await;
+            record(
+                &store,
+                &format!("turn-{turn}"),
+                &format!("body-{turn}"),
+                &completed_at,
+            )
+            .await;
         }
 
         let context = store.agent_context("lead").await.unwrap();
@@ -328,7 +360,10 @@ mod tests {
             Some("2026-08-04T23:59:59+00:00"),
             "2026-08-05T00:00:00.000Z"
         ));
-        assert!(!completed_after(Some("not a timestamp"), "2026-08-05T00:00:00.000Z"));
+        assert!(!completed_after(
+            Some("not a timestamp"),
+            "2026-08-05T00:00:00.000Z"
+        ));
         assert!(!completed_after(None, "2026-08-05T00:00:00.000Z"));
     }
 }

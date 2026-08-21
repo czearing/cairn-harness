@@ -12,9 +12,7 @@ use anyhow::{Result, anyhow};
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
-use crate::{
-    config::CopilotConfig, models::WorkerSpec, persistent_runner::Job, shell_command, store::Store,
-};
+use crate::{config::CopilotConfig, models::WorkerSpec, persistent_runner::Job, store::Store};
 
 pub async fn run(
     config: CopilotConfig,
@@ -167,36 +165,8 @@ fn agent(
         .join("copilot-home")
         .join(&worker.id);
     std::fs::create_dir_all(&copilot_home)?;
-    crate::acp_profile::sync(&copilot_home, root)?;
-    let mut args = vec![
-        "AGENT_HARNESS=1".into(),
-        format!("COPILOT_HOME={}", copilot_home.display()),
-        format!("CAIRN_MODEL={}", worker.model),
-        format!(
-            "CAIRN_HARNESS_DB={}",
-            root.join(".cairn-harness").join("harness.db").display()
-        ),
-        format!("CAIRN_HARNESS_AGENT={}", worker.id),
-        format!("CAIRN_HARNESS_LEADER={}", worker.leader),
-        format!("CAIRN_HARNESS_IDEA_AGENTS={}", worker.idea_agents.join(",")),
-        format!(
-            "CAIRN_HARNESS_DELEGATE_AGENTS={}",
-            worker.delegate_agents.join(",")
-        ),
-        format!("CAIRN_HARNESS_RUNTIME_ID={runtime_id}"),
-        format!(
-            "CAIRN_HARNESS_EXECUTABLE={}",
-            std::env::current_exe()?.display()
-        ),
-    ];
-    args.extend(crate::cairn_scope::process_environment(root));
-    args.extend(shell_command::argv(&config.executable));
-    args.extend(config.arguments.clone());
-    args.extend(["--acp".into(), "--no-color".into()]);
-    let path = crate::mcp_config::write(root, worker, config, runtime_id)?;
-    let path = path.to_string_lossy().replace('\\', "/");
-    args.extend(["--additional-mcp-config".into(), format!("@{path}")]);
-    args.extend(["--model".into(), worker.model.clone()]);
+    crate::acp_profile::sync(&copilot_home, root, worker)?;
+    let args = crate::acp_launch::arguments(config, root, worker, runtime_id, &copilot_home)?;
     Ok(AcpAgent::from_args(args)?.with_debug(|line, direction| {
         if std::env::var_os("HARNESS_ACP_DEBUG").is_some() {
             eprintln!("{direction:?}: {line}");
@@ -382,8 +352,9 @@ mod tests {
             project_root: root.to_path_buf(),
             worker: worker.clone(),
             session_id: session_id.into(),
-            prompt: prompt.into(),
-            fresh_session_prompt: None,
+            composed: crate::prompt::Composed::body(prompt),
+            prior_context: None,
+            delivered: Default::default(),
             cancellation: watch::channel(false).1,
         }
     }

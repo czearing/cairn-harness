@@ -94,7 +94,9 @@ pub async fn invoke_with_idea_agents(
         }
         "task_delegate" => {
             if !is_delegate {
-                bail!("task_delegate is only available to the project leader or an agent granted delegation capability");
+                bail!(
+                    "task_delegate is only available to the project leader or an agent granted delegation capability"
+                );
             }
             let assignee = required(arguments, "to")?;
             if idea_agents
@@ -120,7 +122,9 @@ pub async fn invoke_with_idea_agents(
         }
         "message_send" => {
             if !is_delegate {
-                bail!("message_send is only available to the project leader or an agent granted delegation capability");
+                bail!(
+                    "message_send is only available to the project leader or an agent granted delegation capability"
+                );
             }
             store
                 .send_peer_message(

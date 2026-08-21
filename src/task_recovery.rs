@@ -11,7 +11,10 @@ impl Store {
     /// That orphaned delegation then blocks its parent in `waiting` forever, since nothing
     /// ever claims or completes it. Failing it here lets `recover`'s existing
     /// no-active-children rule promote the parent back to `pending` in the same sweep.
-    pub(crate) async fn fail_orphaned_delegations(&self, active_agent_ids: &[String]) -> Result<u64> {
+    pub(crate) async fn fail_orphaned_delegations(
+        &self,
+        active_agent_ids: &[String],
+    ) -> Result<u64> {
         if active_agent_ids.is_empty() {
             return Ok(0);
         }

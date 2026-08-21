@@ -29,6 +29,8 @@ impl CopilotRunner {
     }
 
     async fn execute(&self, request: RunRequest) -> Result<AgentOutput> {
+        let prompt = request.full_prompt();
+        request.delivered.record(&prompt);
         let mut cancellation = request.cancellation;
         if *cancellation.borrow() {
             bail!("agent run cancelled");
@@ -37,7 +39,7 @@ impl CopilotRunner {
         command.args(&self.config.arguments);
         command
             .arg("-p")
-            .arg(&request.prompt)
+            .arg(&prompt)
             .arg("-s")
             .arg("--no-color")
             .arg("-C")

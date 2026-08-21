@@ -98,9 +98,42 @@ pub struct RunRequest {
     pub project_root: PathBuf,
     pub worker: WorkerSpec,
     pub session_id: String,
-    pub prompt: String,
-    pub fresh_session_prompt: Option<String>,
+    pub composed: crate::prompt::Composed,
+    pub prior_context: Option<String>,
+    pub delivered: DeliveredPrompt,
     pub cancellation: tokio::sync::watch::Receiver<bool>,
+}
+
+impl RunRequest {
+    /// Everything the agent would need without a retained session.
+    pub fn full_prompt(&self) -> String {
+        let prompt = self.composed.full();
+        match &self.prior_context {
+            Some(context) => crate::prompt::with_prior_context(&prompt, context),
+            None => prompt,
+        }
+    }
+}
+
+/// Out-parameter carrying the exact bytes a runner delivered back to the caller.
+///
+/// `turns.prompt` is the only durable record of what an agent actually received,
+/// and once sections are withheld from a continuing session the composed prompt
+/// is no longer that record. Returning it through `AgentOutput` was rejected
+/// because that struct is deserialized from agent JSON and is built in dozens of
+/// tests; a shared cell keeps the change to the request that already travels the
+/// same path.
+#[derive(Clone, Debug, Default)]
+pub struct DeliveredPrompt(std::sync::Arc<std::sync::Mutex<Option<String>>>);
+
+impl DeliveredPrompt {
+    pub fn record(&self, prompt: &str) {
+        *self.0.lock().expect("delivered prompt lock") = Some(prompt.to_string());
+    }
+
+    pub fn get(&self) -> Option<String> {
+        self.0.lock().expect("delivered prompt lock").clone()
+    }
 }
 
 impl AgentOutput {

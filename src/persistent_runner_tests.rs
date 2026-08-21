@@ -61,6 +61,8 @@ fn ready_agents_are_reused_only_for_the_same_session() {
         requested_session_id: "old-session".into(),
         requested_model: "gpt-5.4-mini".into(),
         hook_revision: "hook-a".into(),
+        delivered_sections: Default::default(),
+        delivered_body: Default::default(),
         stop,
     };
 
@@ -177,6 +179,8 @@ async fn replaced_pending_startup_cannot_publish_a_stale_handle() {
         requested_session_id: "old-session".into(),
         requested_model: "gpt-5.4-mini".into(),
         hook_revision: "hook-a".into(),
+        delivered_sections: Default::default(),
+        delivered_body: Default::default(),
         stop: old_stop,
     });
     let (_new_state, new_state_rx) = watch::channel(StartupState::Pending);
@@ -186,6 +190,8 @@ async fn replaced_pending_startup_cannot_publish_a_stale_handle() {
         requested_session_id: String::new(),
         requested_model: "gpt-5.4-mini".into(),
         hook_revision: "hook-b".into(),
+        delivered_sections: Default::default(),
+        delivered_body: Default::default(),
         stop: new_stop,
     });
     let agents = Mutex::new(HashMap::from([("writer".into(), new_entry)]));
@@ -233,8 +239,9 @@ async fn replacement_sessions_are_persisted() {
         project_root: root,
         worker: worker.clone(),
         session_id: String::new(),
-        prompt: String::new(),
-        fresh_session_prompt: None,
+        composed: crate::prompt::Composed::default(),
+        prior_context: None,
+        delivered: Default::default(),
         cancellation: watch::channel(false).1,
     };
     let (jobs, _receiver) = mpsc::channel(1);
@@ -257,8 +264,9 @@ fn replacement_session_receives_durable_context_prompt() {
         project_root: PathBuf::new(),
         worker: test_worker("writer"),
         session_id: "old-session".into(),
-        prompt: "current message".into(),
-        fresh_session_prompt: Some("prior context\ncurrent message".into()),
+        composed: crate::prompt::Composed::body("current message"),
+        prior_context: Some("prior context\n".into()),
+        delivered: Default::default(),
         cancellation: watch::channel(false).1,
     };
     let (jobs, _receiver) = mpsc::channel(1);
@@ -268,9 +276,247 @@ fn replacement_session_receives_durable_context_prompt() {
     };
 
     assert_eq!(
-        prompt_for_session(&request, &replacement),
-        "prior context\ncurrent message"
+        prompt_for_session(&request, &replacement, &test_entry()),
+        "<conversation_history>\nprior context\n</conversation_history>\n\
+         Continue from this complete durable history. Do not ask for details already present above.\n\
+         current message"
     );
+}
+
+#[test]
+fn an_interrupting_message_does_not_make_the_preempted_one_repeat_itself() {
+    // The real sequence is A, then the interrupting B, then A again. An earlier version
+    // kept one slot, so B evicted A's record and A was restated on re-claim anyway.
+    let entry = test_entry();
+    let (jobs, _receiver) = mpsc::channel(1);
+    let handle = AgentHandle {
+        jobs,
+        session_id: "live-session".into(),
+    };
+    let composed = |key: &str, body: &str| crate::prompt::Composed {
+        sections: Vec::new(),
+        body: body.into(),
+        body_key: Some(key.into()),
+    };
+    let mut request = RunRequest {
+        project_root: PathBuf::new(),
+        worker: test_worker("writer"),
+        session_id: "live-session".into(),
+        composed: composed(
+            "task-A",
+            "message from dashboard [chat]\nCount from 1 to 40",
+        ),
+        prior_context: None,
+        delivered: Default::default(),
+        cancellation: watch::channel(false).1,
+    };
+
+    let first = prompt_for_session(&request, &handle, &entry);
+    request.composed = composed("task-B", "message from dashboard [chat]\ntest");
+    let interrupter = prompt_for_session(&request, &handle, &entry);
+    request.composed = composed(
+        "task-A",
+        "message from dashboard [chat]\nCount from 1 to 40",
+    );
+    let resumed = prompt_for_session(&request, &handle, &entry);
+
+    assert!(first.contains("Count from 1 to 40"));
+    assert!(interrupter.contains("test"));
+    assert!(
+        !resumed.contains("Count from 1 to 40"),
+        "the interrupting message must not evict the preempted one: {resumed}"
+    );
+    assert!(resumed.contains(crate::prompt::RESUMED_BODY));
+}
+
+#[test]
+fn a_reclaimed_assignment_is_not_restated_to_the_session_already_holding_it() {
+    // A message sent while the agent is mid-turn preempts that turn, which returns to
+    // 'pending' and is claimed again. Before this rule the rebuilt body was delivered a
+    // second time and the agent answered the operator twice for one message.
+    let entry = test_entry();
+    let (jobs, _receiver) = mpsc::channel(1);
+    let handle = AgentHandle {
+        jobs,
+        session_id: "live-session".into(),
+    };
+    let composed = |body: &str| crate::prompt::Composed {
+        sections: vec![crate::prompt::Section {
+            key: "role",
+            text: "Role: writer.".into(),
+        }],
+        body: body.into(),
+        body_key: Some("task-1".into()),
+    };
+    let mut request = RunRequest {
+        project_root: PathBuf::new(),
+        worker: test_worker("writer"),
+        session_id: "live-session".into(),
+        composed: composed("message from dashboard [chat]\nHi how are you doing"),
+        prior_context: None,
+        delivered: Default::default(),
+        cancellation: watch::channel(false).1,
+    };
+
+    let first = prompt_for_session(&request, &handle, &entry);
+    let reclaimed = prompt_for_session(&request, &handle, &entry);
+
+    assert!(first.contains("Hi how are you doing"));
+    assert!(
+        !reclaimed.contains("Hi how are you doing"),
+        "the live session already holds this message: {reclaimed}"
+    );
+    assert!(reclaimed.contains(crate::prompt::RESUMED_BODY));
+    assert_eq!(request.delivered.get().unwrap(), reclaimed);
+
+    // The turn still happens: a genuinely different message from the same operator is
+    // delivered in full, so suppression can never swallow real work.
+    request.composed = composed("message from dashboard [chat]\ntest");
+    let second_message = prompt_for_session(&request, &handle, &entry);
+    assert!(second_message.contains("test"));
+    assert!(!second_message.contains(crate::prompt::RESUMED_BODY));
+}
+
+#[test]
+fn a_distinct_assignment_repeating_the_same_words_is_still_delivered() {
+    // Two separate messages may carry identical text. Identity, not text, decides.
+    let entry = test_entry();
+    let (jobs, _receiver) = mpsc::channel(1);
+    let handle = AgentHandle {
+        jobs,
+        session_id: "live-session".into(),
+    };
+    let composed = |key: &str| crate::prompt::Composed {
+        sections: Vec::new(),
+        body: "message from dashboard [chat]\nping".into(),
+        body_key: Some(key.into()),
+    };
+    let mut request = RunRequest {
+        project_root: PathBuf::new(),
+        worker: test_worker("writer"),
+        session_id: "live-session".into(),
+        composed: composed("task-1"),
+        prior_context: None,
+        delivered: Default::default(),
+        cancellation: watch::channel(false).1,
+    };
+
+    assert!(prompt_for_session(&request, &handle, &entry).contains("ping"));
+    request.composed = composed("task-2");
+    assert!(prompt_for_session(&request, &handle, &entry).contains("ping"));
+}
+
+#[test]
+fn a_rotated_session_is_told_the_assignment_again() {
+    // Suppression is only ever safe against the session that received the body.
+    let entry = test_entry();
+    let (jobs, _receiver) = mpsc::channel(1);
+    let live = AgentHandle {
+        jobs: jobs.clone(),
+        session_id: "live-session".into(),
+    };
+    let replacement = AgentHandle {
+        jobs,
+        session_id: "replacement-session".into(),
+    };
+    let request = RunRequest {
+        project_root: PathBuf::new(),
+        worker: test_worker("writer"),
+        session_id: "live-session".into(),
+        composed: crate::prompt::Composed {
+            sections: Vec::new(),
+            body: "message from dashboard [chat]\nping".into(),
+            body_key: Some("task-1".into()),
+        },
+        prior_context: None,
+        delivered: Default::default(),
+        cancellation: watch::channel(false).1,
+    };
+
+    assert!(prompt_for_session(&request, &live, &entry).contains("ping"));
+    assert!(prompt_for_session(&request, &replacement, &entry).contains("ping"));
+}
+
+#[test]
+fn continuing_session_repeats_only_sections_that_changed() {
+    let entry = test_entry();
+    let (jobs, _receiver) = mpsc::channel(1);
+    let handle = AgentHandle {
+        jobs,
+        session_id: "live-session".into(),
+    };
+    let section = |text: &str| crate::prompt::Composed {
+        sections: vec![
+            crate::prompt::Section {
+                key: "role",
+                text: "Role: writer.".into(),
+            },
+            crate::prompt::Section {
+                key: "runtime",
+                text: text.into(),
+            },
+        ],
+        body: "message from human [topic]\nDo it.".into(),
+        body_key: None,
+    };
+    let mut request = RunRequest {
+        project_root: PathBuf::new(),
+        worker: test_worker("writer"),
+        session_id: "live-session".into(),
+        composed: section("Runtime context JSON:\n{}"),
+        prior_context: None,
+        delivered: Default::default(),
+        cancellation: watch::channel(false).1,
+    };
+
+    let first = prompt_for_session(&request, &handle, &entry);
+    let second = prompt_for_session(&request, &handle, &entry);
+    request.composed = section("Runtime context JSON:\n{\"peer\":1}");
+    let third = prompt_for_session(&request, &handle, &entry);
+
+    assert!(first.contains("Role: writer."));
+    assert!(first.contains("Runtime context JSON:\n{}"));
+    // A section already delivered on this live session is not sent again, and the
+    // body still is, so the agent never loses the message it must act on.
+    assert_eq!(second, "message from human [topic]\nDo it.");
+    assert!(!third.contains("Role: writer."));
+    assert!(third.contains("Runtime context JSON:\n{\"peer\":1}"));
+    assert_eq!(request.delivered.get().unwrap(), third);
+}
+
+#[test]
+fn fresh_session_resends_every_section() {
+    let entry = test_entry();
+    let (jobs, _receiver) = mpsc::channel(1);
+    let live = AgentHandle {
+        jobs: jobs.clone(),
+        session_id: "live-session".into(),
+    };
+    let replacement = AgentHandle {
+        jobs,
+        session_id: "replacement-session".into(),
+    };
+    let request = RunRequest {
+        project_root: PathBuf::new(),
+        worker: test_worker("writer"),
+        session_id: "live-session".into(),
+        composed: crate::prompt::Composed {
+            sections: vec![crate::prompt::Section {
+                key: "role",
+                text: "Role: writer.".into(),
+            }],
+            body: "Do it.".into(),
+            body_key: None,
+        },
+        prior_context: None,
+        delivered: Default::default(),
+        cancellation: watch::channel(false).1,
+    };
+
+    prompt_for_session(&request, &live, &entry);
+    let after_rotation = prompt_for_session(&request, &replacement, &entry);
+
+    assert!(after_rotation.contains("Role: writer."));
 }
 
 #[tokio::test]
@@ -458,14 +704,15 @@ async fn cleared_durable_session_evicts_cached_handle_without_restoring_old_id()
         project_root: root,
         worker: worker.clone(),
         session_id: String::new(),
-        prompt: "next task".into(),
-        fresh_session_prompt: None,
+        composed: crate::prompt::Composed::body("next task"),
+        prior_context: None,
+        delivered: Default::default(),
         cancellation: watch::channel(false).1,
     };
     persist_session(&request, &fresh.handle).await.unwrap();
     let output = send_job(
         &fresh.handle,
-        request.prompt.clone(),
+        request.full_prompt(),
         request.cancellation.clone(),
     )
     .await
@@ -680,8 +927,9 @@ async fn unrelated_persistent_job_errors_propagate_without_retry() {
                 project_root: root,
                 worker,
                 session_id: "same-session".into(),
-                prompt: "same task".into(),
-                fresh_session_prompt: None,
+                composed: crate::prompt::Composed::body("same task"),
+                prior_context: None,
+                delivered: Default::default(),
                 cancellation: watch::channel(false).1,
             },
             start,
@@ -716,8 +964,9 @@ async fn startup_cleanup_database_errors_propagate_without_retry() {
                 project_root: blocked_root,
                 worker: test_worker("writer"),
                 session_id: "stale-session".into(),
-                prompt: "same task".into(),
-                fresh_session_prompt: None,
+                composed: crate::prompt::Composed::body("same task"),
+                prior_context: None,
+                delivered: Default::default(),
                 cancellation: watch::channel(false).1,
             },
             start,
@@ -744,5 +993,17 @@ fn test_worker(id: &str) -> WorkerSpec {
         leader_task_limit: 3,
         idea_agents: Vec::new(),
         delegate_agents: Vec::new(),
+    }
+}
+
+fn test_entry() -> AgentEntry {
+    AgentEntry {
+        state: watch::channel(StartupState::Pending).1,
+        requested_session_id: String::new(),
+        requested_model: "gpt-5.4-mini".into(),
+        hook_revision: String::new(),
+        delivered_sections: Default::default(),
+        delivered_body: Default::default(),
+        stop: watch::channel(false).0,
     }
 }

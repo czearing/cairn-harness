@@ -39,6 +39,19 @@ pub(crate) struct AgentEntry {
     pub(crate) requested_session_id: String,
     pub(crate) requested_model: String,
     pub(crate) hook_revision: String,
+    /// Text of each prompt section as last delivered on this entry's session.
+    ///
+    /// In-memory is sufficient and correct: an entry is evicted whenever the
+    /// session rotates or a job fails, and a harness restart drops the map and
+    /// starts a new session together, so the map can never claim an agent was
+    /// told something the live session has not seen.
+    pub(crate) delivered_sections: std::sync::Mutex<HashMap<String, String>>,
+    /// Text of each assignment body as last delivered on this entry's session, by task id.
+    ///
+    /// A map, not one slot: an interrupting message is delivered between a preempted
+    /// assignment and its re-claim, so a single slot is overwritten by the interrupter
+    /// and the resumed assignment no longer recognises itself.
+    pub(crate) delivered_body: std::sync::Mutex<HashMap<String, String>>,
     pub(crate) stop: watch::Sender<bool>,
 }
 
@@ -128,7 +141,7 @@ impl PersistentCopilotRunner {
                 }
             };
             persist_session(&request, &ready.handle).await?;
-            let prompt = prompt_for_session(&request, &ready.handle);
+            let prompt = prompt_for_session(&request, &ready.handle, &ready.entry);
             request.session_id.clone_from(&ready.handle.session_id);
             let result = send_job(&ready.handle, prompt, request.cancellation.clone()).await;
             if result.is_ok() {
@@ -175,15 +188,53 @@ impl PersistentCopilotRunner {
     }
 }
 
-fn prompt_for_session(request: &RunRequest, handle: &AgentHandle) -> String {
-    if request.session_id != handle.session_id {
-        request
-            .fresh_session_prompt
-            .clone()
-            .unwrap_or_else(|| request.prompt.clone())
-    } else {
-        request.prompt.clone()
+fn prompt_for_session(request: &RunRequest, handle: &AgentHandle, entry: &AgentEntry) -> String {
+    let fresh = request.session_id != handle.session_id;
+    let mut delivered = entry
+        .delivered_sections
+        .lock()
+        .expect("delivered sections lock");
+    let mut delivered_body = entry.delivered_body.lock().expect("delivered body lock");
+    if fresh {
+        delivered.clear();
+        delivered_body.clear();
     }
+    // A preempted turn is claimed again with the same row and the same words. Sending
+    // that body once more makes the agent answer the operator twice, so it is replaced
+    // by a resume line. Identity and text must both match: a rebuilt body that gained
+    // child results or a changed assignment is genuinely new and is sent in full.
+    let repeated = request.composed.body_key.as_ref().is_some_and(|key| {
+        delivered_body
+            .get(key)
+            .is_some_and(|sent| sent == &request.composed.body)
+    });
+    let body = if repeated {
+        crate::prompt::RESUMED_BODY
+    } else {
+        if let Some(key) = &request.composed.body_key {
+            delivered_body.insert(key.clone(), request.composed.body.clone());
+        }
+        request.composed.body.as_str()
+    };
+    let prompt = request.composed.render_body(
+        |section| {
+            if delivered
+                .get(section.key)
+                .is_some_and(|sent| sent == &section.text)
+            {
+                return false;
+            }
+            delivered.insert(section.key.to_string(), section.text.clone());
+            true
+        },
+        body,
+    );
+    let prompt = match (&request.prior_context, fresh) {
+        (Some(context), true) => crate::prompt::with_prior_context(&prompt, context),
+        _ => prompt,
+    };
+    request.delivered.record(&prompt);
+    prompt
 }
 
 impl AgentRunner for PersistentCopilotRunner {

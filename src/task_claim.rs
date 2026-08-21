@@ -31,6 +31,12 @@ impl ClaimMutation {
 }
 
 impl Store {
+    // Ordering note: the `operator-priority` arm exists to stop a priority inversion. When chat
+    // preempts a turn, that turn goes back to 'pending' carrying an operator-priority note. Both
+    // it and the operator's new message are source='message', so on plain `created_at` the older
+    // released turn always won the re-claim and the new message waited out the very turn it just
+    // interrupted. Yielding while the preempting message is still pending is self-limiting: once
+    // that message is claimed the arm stops matching, so nothing starves.
     pub async fn claim(&self, agent: &str) -> Result<Option<Assignment>> {
         if !self.has_claimable_task(agent).await? {
             return Ok(None);
@@ -47,9 +53,17 @@ impl Store {
                  AND newer.source IN ('message','manual')
                  AND newer.created_at > tasks.created_at
                ) >= ? THEN 0
+               WHEN EXISTS(
+                 SELECT 1 FROM task_context ctx
+                 WHERE ctx.task_id=tasks.id AND ctx.topic='operator-priority'
+               ) AND EXISTS(
+                 SELECT 1 FROM tasks msg
+                 WHERE msg.assignee=tasks.assignee AND msg.status='pending'
+                 AND msg.topic='dashboard-message' AND msg.id<>tasks.id
+               ) THEN 2
                WHEN source IN ('message','manual') THEN 1
-               WHEN source='agent' THEN 2
-               ELSE 3
+               WHEN source='agent' THEN 3
+               ELSE 4
              END, created_at, id LIMIT 1)
              RETURNING id,parent_id,kind,source,creator,assignee,topic,body,attempts,claim_generation",
         )

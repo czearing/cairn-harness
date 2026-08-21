@@ -413,5 +413,8 @@ async fn a_flood_of_notifications_still_returns_the_turn_promptly() {
         .unwrap();
     writer.await.unwrap();
 
-    assert!(events.text.contains("499"), "every appended event is absorbed");
+    assert!(
+        events.text.contains("499"),
+        "every appended event is absorbed"
+    );
 }

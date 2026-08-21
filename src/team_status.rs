@@ -102,7 +102,14 @@ mod tests {
                 .unwrap();
         }
         store
-            .create_root("dashboard", "lead", "work-item", "Active work", "manual", None)
+            .create_root(
+                "dashboard",
+                "lead",
+                "work-item",
+                "Active work",
+                "manual",
+                None,
+            )
             .await
             .unwrap();
         store

@@ -165,7 +165,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::{mcp_tools_helpers::validate_completion_result, models::WorkerSpec, protocol::BEGIN};
+    use crate::{
+        mcp_tools_helpers::validate_completion_result, models::WorkerSpec, protocol::BEGIN,
+    };
 
     #[test]
     fn tool_listing_marks_the_server_ready() {

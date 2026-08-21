@@ -60,10 +60,33 @@ fn add_harness_server(
                 "CAIRN_HARNESS_DELEGATE_AGENTS": worker.delegate_agents.join(","),
                 "CAIRN_HARNESS_RUNTIME_ID": runtime_id
             },
-            "tools": ["*"]
+            "tools": harness_tools(worker)
         }),
     );
     Ok(())
+}
+
+/// The Harness coordination tools an agent can actually reach in its own role.
+///
+/// A granted tool costs its schema in every request whether or not the agent may
+/// use it, so the grant is narrowed to the role rather than left at `["*"]`.
+fn harness_tools(worker: &WorkerSpec) -> Vec<&'static str> {
+    let mut tools = vec!["team_status", "message_send"];
+    if worker.idea_agents.iter().any(|idea| idea == &worker.id) {
+        tools.push("task_create");
+    }
+    if worker.id == worker.leader
+        || worker
+            .delegate_agents
+            .iter()
+            .any(|delegate| delegate == &worker.id)
+    {
+        tools.push("task_create");
+        tools.push("task_delegate");
+    }
+    tools.sort_unstable();
+    tools.dedup();
+    tools
 }
 
 fn load_profile(root: &Path, worker: &WorkerSpec) -> Result<Value> {

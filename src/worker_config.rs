@@ -18,7 +18,10 @@ use crate::{
 /// overwhelmingly common case where the file is untouched between edits. A
 /// cheap `fs::metadata` stat call is used to detect real changes before
 /// paying for the full read + JSON parse.
-pub(crate) fn refresh_config(ctx: &mut WorkerContext, last_seen: &mut Option<SystemTime>) -> Result<()> {
+pub(crate) fn refresh_config(
+    ctx: &mut WorkerContext,
+    last_seen: &mut Option<SystemTime>,
+) -> Result<()> {
     let Some(path) = ctx.config_path.clone() else {
         return Ok(());
     };

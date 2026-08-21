@@ -47,6 +47,117 @@ async fn stale_claim_generation_cannot_renew_reclaimed_task() {
 }
 
 #[tokio::test]
+async fn chat_message_is_claimed_before_the_turn_it_preempted() {
+    let root = tempdir().unwrap();
+    let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+    store.register(&worker("agent")).await.unwrap();
+    let running = store
+        .create_message(
+            "dashboard",
+            "agent",
+            "dashboard-message",
+            "Long first message.",
+        )
+        .await
+        .unwrap();
+    assert_eq!(store.claim("agent").await.unwrap().unwrap().id, running);
+    let interrupting = store
+        .create_message(
+            "dashboard",
+            "agent",
+            "dashboard-message",
+            "Stop and answer this.",
+        )
+        .await
+        .unwrap();
+    preempt_for_operator(&store, &running).await;
+
+    // Without the operator-priority ordering arm the released turn wins on created_at and the
+    // operator waits out the very turn they just interrupted.
+    assert_eq!(
+        store.claim("agent").await.unwrap().unwrap().id,
+        interrupting
+    );
+}
+
+#[tokio::test]
+async fn a_preempted_turn_resumes_once_the_operator_message_is_taken() {
+    let root = tempdir().unwrap();
+    let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+    store.register(&worker("agent")).await.unwrap();
+    let running = store
+        .create_message(
+            "dashboard",
+            "agent",
+            "dashboard-message",
+            "Long first message.",
+        )
+        .await
+        .unwrap();
+    store.claim("agent").await.unwrap().unwrap();
+    let interrupting = store
+        .create_message(
+            "dashboard",
+            "agent",
+            "dashboard-message",
+            "Stop and answer this.",
+        )
+        .await
+        .unwrap();
+    preempt_for_operator(&store, &running).await;
+
+    let taken = store.claim("agent").await.unwrap().unwrap();
+    assert_eq!(taken.id, interrupting);
+    store.finish(&taken.id, "completed", None).await.unwrap();
+
+    // The yield is self-limiting: nothing is starved once the operator has been answered.
+    assert_eq!(store.claim("agent").await.unwrap().unwrap().id, running);
+}
+
+#[tokio::test]
+async fn preemption_ordering_does_not_reorder_ordinary_queued_messages() {
+    let root = tempdir().unwrap();
+    let store = Store::open(&root.path().join("harness.db")).await.unwrap();
+    store.register(&worker("agent")).await.unwrap();
+    let first = store
+        .create_message("dashboard", "agent", "dashboard-message", "First.")
+        .await
+        .unwrap();
+    let second = store
+        .create_message("dashboard", "agent", "dashboard-message", "Second.")
+        .await
+        .unwrap();
+
+    // No preemption happened, so plain arrival order must still govern.
+    assert_eq!(store.claim("agent").await.unwrap().unwrap().id, first);
+    assert_eq!(store.claim("agent").await.unwrap().unwrap().id, second);
+}
+
+/// Reproduces exactly what the dashboard does when chat arrives mid-turn: attach an
+/// operator-priority note to the running turn, then release that turn back to pending.
+async fn preempt_for_operator(store: &Store, running: &str) {
+    sqlx::query(
+        "INSERT INTO task_context(id,task_id,creator,topic,body,created_at)
+         VALUES(?,?,'dashboard','operator-priority','An operator is waiting in chat.',?)",
+    )
+    .bind(format!("operator-priority:{running}"))
+    .bind(running)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(&store.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE tasks SET status='pending',claimed_at=NULL,attempts=attempts-1,
+         claim_generation=claim_generation+1
+         WHERE id=? AND status='claimed' AND attempts>0",
+    )
+    .bind(running)
+    .execute(&store.pool)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
 async fn runtime_recovery_requeues_claims_that_expire_after_bootstrap() {
     let root = tempdir().unwrap();
     let store = Store::open(&root.path().join("harness.db")).await.unwrap();
@@ -398,10 +509,7 @@ async fn fail_orphaned_delegations_unblocks_a_parent_delegated_to_a_deleted_agen
     // "deleted-worker" no longer appears in the live roster passed to fail_orphaned_delegations,
     // simulating it having been removed from the project config after the delegation was created.
     let live_agents = vec!["lead".to_string()];
-    let failed = store
-        .fail_orphaned_delegations(&live_agents)
-        .await
-        .unwrap();
+    let failed = store.fail_orphaned_delegations(&live_agents).await.unwrap();
     assert_eq!(failed, 1);
     assert_eq!(store.task_status(&child).await.unwrap(), "failed");
 
@@ -428,10 +536,7 @@ async fn fail_orphaned_delegations_leaves_delegations_to_live_agents_untouched()
         .unwrap();
 
     let live_agents = vec!["lead".to_string(), "worker".to_string()];
-    let failed = store
-        .fail_orphaned_delegations(&live_agents)
-        .await
-        .unwrap();
+    let failed = store.fail_orphaned_delegations(&live_agents).await.unwrap();
 
     assert_eq!(failed, 0);
     assert_eq!(store.task_status(&child).await.unwrap(), "pending");
@@ -2238,8 +2343,8 @@ async fn instructions_reload_after_waiting_for_the_project_permit() {
 
     assert_eq!(request.worker.description, "New role");
     assert_eq!(request.worker.prompt, "New prompt.");
-    assert!(request.prompt.contains("New role. New prompt."));
-    assert!(request.prompt.contains("peer=New peer"));
+    assert!(request.full_prompt().contains("New role. New prompt."));
+    assert!(request.full_prompt().contains("peer=New peer"));
     assert_eq!(request.session_id, "existing-session");
 }
 

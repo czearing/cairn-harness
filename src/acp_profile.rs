@@ -2,9 +2,16 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-pub fn sync(destination: &Path, root: &Path) -> Result<()> {
+use crate::models::WorkerSpec;
+
+pub fn sync(destination: &Path, root: &Path, worker: &WorkerSpec) -> Result<()> {
     let home = home()?;
-    sync_from(&PathBuf::from(home).join(".copilot"), destination, root)
+    sync_from(
+        &PathBuf::from(home).join(".copilot"),
+        destination,
+        root,
+        Some(worker),
+    )
 }
 
 pub fn hook_revision() -> Result<String> {
@@ -26,7 +33,12 @@ fn home() -> Result<std::ffi::OsString> {
         .context("home directory is unavailable")
 }
 
-fn sync_from(source: &Path, destination: &Path, root: &Path) -> Result<()> {
+fn sync_from(
+    source: &Path,
+    destination: &Path,
+    root: &Path,
+    worker: Option<&WorkerSpec>,
+) -> Result<()> {
     for name in [
         "mcp-config.json",
         "config.json",
@@ -51,8 +63,62 @@ fn sync_from(source: &Path, destination: &Path, root: &Path) -> Result<()> {
         .context("required Cairn Copilot hook is invalid")?;
     sync_directory(&source.join("hooks"), &destination.join("hooks"))?;
     std::fs::write(destination.join("hooks").join("cairn.json"), cairn_hook)?;
-    sync_directory(&source.join("skills"), &destination.join("skills"))?;
+    sync_skills(source, destination, root, worker)?;
     crate::cairn_scope::scope_profile(&destination.join("mcp-config.json"), root)
+}
+
+/// Mirror only the skills this agent is allowed to see.
+///
+/// Copilot advertises every installed skill in its own system prompt, so a
+/// machine-wide mirror charges every agent for skills it can never use. The
+/// allowlist lives in `<root>/.cairn-harness/agent-skills.json` as agent id (or
+/// `"*"`) to skill directory names. It is opt-in: with no file, or no entry for
+/// this agent, every skill is mirrored exactly as before.
+fn sync_skills(
+    source: &Path,
+    destination: &Path,
+    root: &Path,
+    worker: Option<&WorkerSpec>,
+) -> Result<()> {
+    let source = source.join("skills");
+    let destination = destination.join("skills");
+    let Some(allowed) = worker.and_then(|worker| allowed_skills(root, &worker.id)) else {
+        return sync_directory(&source, &destination);
+    };
+    if destination.exists() {
+        std::fs::remove_dir_all(&destination)?;
+    }
+    std::fs::create_dir_all(&destination)?;
+    if !source.is_dir() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(&source)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if !allowed.iter().any(|skill| skill.as_str() == name) {
+            continue;
+        }
+        let to = destination.join(&name);
+        if entry.file_type()?.is_dir() {
+            sync_directory(&entry.path(), &to)?;
+        } else {
+            std::fs::copy(entry.path(), to)?;
+        }
+    }
+    Ok(())
+}
+
+fn allowed_skills(root: &Path, agent: &str) -> Option<Vec<String>> {
+    let file = root.join(".cairn-harness").join("agent-skills.json");
+    let document: serde_json::Value = serde_json::from_slice(&std::fs::read(file).ok()?).ok()?;
+    let entry = document.get(agent).or_else(|| document.get("*"))?;
+    Some(
+        entry
+            .as_array()?
+            .iter()
+            .filter_map(|skill| skill.as_str().map(str::to_string))
+            .collect(),
+    )
 }
 
 fn sync_directory(source: &Path, destination: &Path) -> Result<()> {
@@ -114,7 +180,7 @@ mod tests {
         .unwrap();
         std::fs::create_dir_all(destination.join("skills").join("stale-skill")).unwrap();
 
-        sync_from(&source, &destination, temp.path()).unwrap();
+        sync_from(&source, &destination, temp.path(), None).unwrap();
 
         let hooks = destination.join("hooks");
         assert!(hooks.join("unsafe-parent.json").is_file());
@@ -156,7 +222,7 @@ mod tests {
         )
         .unwrap();
 
-        let error = sync_from(&source, &destination, temp.path()).unwrap_err();
+        let error = sync_from(&source, &destination, temp.path(), None).unwrap_err();
 
         assert!(
             error

@@ -17,6 +17,10 @@ pub(crate) struct AgentResponse {
     pub tools: Vec<String>,
 }
 
+/// A stop hook can block a turn for a reason the agent is unable to satisfy, so
+/// re-prompting is bounded; an unsatisfiable reason otherwise repeats forever.
+pub(crate) const BLOCKED_REPROMPT_LIMIT: usize = 3;
+
 pub(crate) async fn read(
     session: &mut agent_client_protocol::ActiveSession<'_, Agent>,
     signal: &mut TurnSignal,
@@ -25,7 +29,9 @@ pub(crate) async fn read(
     cancellation: &mut watch::Receiver<bool>,
 ) -> Result<AgentResponse> {
     let mut output = String::new();
+    let mut committed = 0usize;
     let mut tools = Vec::new();
+    let mut blocks = 0usize;
     loop {
         tokio::select! {
             update = session.read_update() => {
@@ -36,7 +42,17 @@ pub(crate) async fn read(
                             _ = wait_for_cancellation(cancellation) => bail!("agent run cancelled"),
                         };
                         if let TurnStop::Blocked(reason) = stop {
+                            if blocks >= BLOCKED_REPROMPT_LIMIT {
+                                tracing::warn!(
+                                    blocks,
+                                    %reason,
+                                    "abandoning turn after repeated stop-hook blocks"
+                                );
+                                return Ok(response(text, event_tools, output, tools));
+                            }
+                            blocks += 1;
                             output.clear();
+                            committed = 0;
                             tools.clear();
                             clear_blocked(live);
                             start = signal.position();
@@ -48,7 +64,7 @@ pub(crate) async fn read(
                     SessionMessage::SessionMessage(dispatch) => {
                         MatchDispatch::new(dispatch)
                             .if_notification(async |notification: SessionNotification| {
-                                apply_update(notification.update, &mut output, &mut tools, live);
+                                apply_update(notification.update, &mut output, &mut committed, &mut tools, live);
                                 Ok(())
                             })
                             .await
@@ -73,6 +89,7 @@ pub(crate) async fn read(
 fn apply_update(
     update: SessionUpdate,
     output: &mut String,
+    committed: &mut usize,
     tools: &mut Vec<String>,
     live: &mut LiveResponse,
 ) {
@@ -81,7 +98,7 @@ fn apply_update(
             content: ContentBlock::Text(text),
             ..
         }) => {
-            if append_text(output, &text.text)
+            if append_text(output, *committed, &text.text)
                 && let Err(error) = live.publish(output)
             {
                 tracing::warn!(%error, "could not publish live response");
@@ -91,6 +108,7 @@ fn apply_update(
             if let Err(error) = live.flush(output) {
                 tracing::warn!(%error, "could not flush live response");
             }
+            end_message(output, committed);
             tools.push(call.title);
         }
         _ => {}
@@ -142,28 +160,75 @@ fn cancel(
         .send_notification_to(Agent, CancelNotification::new(session.session_id().clone()))
 }
 
-fn append_text(output: &mut String, chunk: &str) -> bool {
-    if chunk.is_empty() || chunk == output || (chunk.len() >= 8 && output.ends_with(chunk)) {
+fn append_text(output: &mut String, committed: usize, chunk: &str) -> bool {
+    let current = &output[committed..];
+    if chunk.is_empty() || chunk == current || (chunk.len() >= 8 && current.ends_with(chunk)) {
         return false;
     }
-    if chunk.starts_with(output.as_str()) {
-        output.clear();
+    if chunk.starts_with(current) {
+        output.truncate(committed);
     }
     output.push_str(chunk);
     true
 }
 
+/// Closes the message in progress so the next one is not glued onto its last
+/// word; without it two separate replies render as a single run-on string.
+fn end_message(output: &mut String, committed: &mut usize) {
+    if output.len() > *committed {
+        output.push_str("\n\n");
+    }
+    *committed = output.len();
+}
+
 #[cfg(test)]
 mod tests {
-    use super::append_text;
+    use super::{append_text, end_message};
 
     #[test]
     fn accepts_delta_and_cumulative_chunks_without_repeating_text() {
         let mut output = String::new();
-        assert!(append_text(&mut output, "CURRENT"));
-        assert!(append_text(&mut output, "CURRENT STREAM"));
-        assert!(append_text(&mut output, " START."));
-        assert!(!append_text(&mut output, "CURRENT STREAM START."));
+        assert!(append_text(&mut output, 0, "CURRENT"));
+        assert!(append_text(&mut output, 0, "CURRENT STREAM"));
+        assert!(append_text(&mut output, 0, " START."));
+        assert!(!append_text(&mut output, 0, "CURRENT STREAM START."));
         assert_eq!(output, "CURRENT STREAM START.");
+    }
+
+    #[test]
+    fn separates_messages_instead_of_running_them_together() {
+        let mut output = String::new();
+        let mut committed = 0usize;
+
+        assert!(append_text(&mut output, committed, "BRAIN_OK 4"));
+        end_message(&mut output, &mut committed);
+        assert!(append_text(&mut output, committed, "BRAIN_OK 4"));
+
+        assert_eq!(output, "BRAIN_OK 4\n\nBRAIN_OK 4");
+    }
+
+    #[test]
+    fn deduplicates_within_a_message_after_an_earlier_one_committed() {
+        let mut output = String::new();
+        let mut committed = 0usize;
+
+        assert!(append_text(&mut output, committed, "First reply."));
+        end_message(&mut output, &mut committed);
+        assert!(append_text(&mut output, committed, "Second"));
+        assert!(append_text(&mut output, committed, "Second reply."));
+
+        assert_eq!(output, "First reply.\n\nSecond reply.");
+    }
+
+    #[test]
+    fn a_boundary_without_new_text_adds_no_separator() {
+        let mut output = String::new();
+        let mut committed = 0usize;
+
+        end_message(&mut output, &mut committed);
+        end_message(&mut output, &mut committed);
+
+        assert!(output.is_empty());
+        assert_eq!(committed, 0);
     }
 }

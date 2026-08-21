@@ -53,6 +53,8 @@ impl PersistentCopilotRunner {
                     requested_session_id: session_id.clone(),
                     requested_model: worker.model.clone(),
                     hook_revision,
+                    delivered_sections: std::sync::Mutex::new(std::collections::HashMap::new()),
+                    delivered_body: std::sync::Mutex::new(std::collections::HashMap::new()),
                     stop: stop_tx,
                 });
                 agents.insert(worker_id.clone(), entry.clone());
