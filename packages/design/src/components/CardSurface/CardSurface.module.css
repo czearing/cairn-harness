@@ -1,0 +1,22 @@
+.surface {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-1);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+.surface[data-card-interactive] {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.surface[data-card-interactive]:hover, .surface[data-card-interactive]:focus-within {
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  transform: translateY(-1px);
+}
+.surface[data-card-tone="accent"] { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
+.surface[data-card-tone="warning"] { border-color: color-mix(in srgb, var(--warning) 28%, var(--border)); }
+.surface[data-card-tone="danger"] { border-color: color-mix(in srgb, var(--danger) 28%, var(--border)); }
+@media (prefers-reduced-motion: reduce) {
+  .surface[data-card-interactive] { transition: none; }
+  .surface[data-card-interactive]:hover, .surface[data-card-interactive]:focus-within { transform: none; }
+}

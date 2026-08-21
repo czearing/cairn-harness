@@ -1,0 +1,29 @@
+{
+  "name": "@cairn/harness-design",
+  "version": "0.1.0",
+  "description": "Presentational primitives and design tokens shared by Cairn Harness surfaces.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css"
+  },
+  "scripts": {
+    "check:parity": "node scripts/check-parity.mjs"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/czearing/cairn-harness.git",
+    "directory": "packages/design"
+  }
+}

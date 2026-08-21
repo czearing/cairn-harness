@@ -1,0 +1,60 @@
+.status {
+  --status-signal: var(--text-subtle);
+  --status-label: var(--text-muted);
+  width: fit-content;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--status-label);
+  font-size: .78125rem;
+  font-weight: var(--weight-label);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.status[data-size="default"] { min-height: 20px; }
+.status[data-size="compact"] { min-height: 16px; gap: 6px; font-size: .71875rem; }
+.status[data-display="dot"] { width: 12px; min-height: 12px; justify-content: center; }
+.signal {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--status-signal);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--status-signal) 20%, transparent);
+}
+.status[data-size="compact"] .signal { width: 5px; height: 5px; }
+.status[data-display="dot"] .signal { width: 7px; height: 7px; }
+.label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.status[data-tone="positive"] { --status-signal: var(--accent); }
+.status[data-tone="active"] { --status-signal: var(--accent); --status-label: var(--text); }
+/* Live work shares the accent with settled success, so it carries a static halo as well as the pulse.
+   Motion alone cannot distinguish them: prefers-reduced-motion removes the animation below, which would
+   leave the two states pixel-identical for the users who asked for less motion. */
+.status[data-tone="active"] .signal {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--status-signal) 34%, transparent),
+    0 0 0 3.5px color-mix(in srgb, var(--status-signal) 16%, transparent);
+}
+.status[data-tone="info"] { --status-signal: var(--info); }
+.status[data-tone="warning"] { --status-signal: var(--warning); --status-label: color-mix(in srgb, var(--warning) 82%, var(--text)); }
+.status[data-tone="danger"] { --status-signal: var(--danger); --status-label: color-mix(in srgb, var(--danger) 86%, var(--text)); }
+.status[data-status="queued"] .signal,
+.status[data-status="waiting"] .signal,
+.status[data-status="unsaved"] .signal {
+  background: transparent;
+  border: 1px solid var(--status-signal);
+  box-shadow: none;
+}
+.status[data-status="blocked"] .signal,
+.status[data-status="failed"] .signal,
+.status[data-status="budget-exhausted"] .signal,
+.status[data-status="unknown"] .signal {
+  border-radius: 2px;
+}
+.status[data-motion="pulse"] .signal { animation: status-breathe 1.8s ease-in-out infinite; }
+@keyframes status-breathe { 50% { opacity: .42; } }
+@media (forced-colors: active) { .signal { outline: 1px solid ButtonText; } }
+@media (prefers-reduced-motion: reduce) {
+  .status[data-motion] .signal { animation: none; }
+}
